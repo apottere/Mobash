@@ -248,8 +248,9 @@ main ()
     { 
         echo -e "\n${YEL}Collecting custom...$RS";
         echo "main() {" > $MOBASH_SOURCE_FILE_CUSTOM;
-        for mobash_include_f in `echo "${MOBASH_INCLUDE_ABSOLUTE_FILES[@]}" | tr ' ' '\n' | tac`;
+        for ((mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- ))
         do
+            mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]};
             print_ln "%-70s" "  ${CYN}$mobash_include_f: $RS";
             cat $mobash_include_f >> $MOBASH_SOURCE_FILE_CUSTOM;
             echo >> $MOBASH_SOURCE_FILE_CUSTOM;
