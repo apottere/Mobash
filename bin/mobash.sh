@@ -1,0 +1,350 @@
+#!/bin/bash
+# Compiled with MoBash v1.0
+
+################################################################################
+# INFO
+################################################################################
+#
+# Name:		mobash.sh
+# Author:	Andrew Potter apottere@gmail.com
+# Release:	1.0
+# Date:		
+#
+# A simplistic modular bash compiler
+#
+
+################################################################################
+# CONFIGS
+################################################################################
+
+MOBASH_VERSION="1.0"
+
+MOBASH_CONFIG_PATH="~/mobash/source:$MOBASH_CONFIG_PATH"
+MOBASH_SOURCE_PATH="~/mobash/source:$MOBASH_SOURCE_PATH"
+MOBASH_INCLUDE_PATH="~/mobash/source:$MOBASH_INCLUDE_PATH"
+MOBASH_IMPORT_PATH="~/mobash/import:$MOBASH_INCLUDE_PATH"
+MOBASH_BIN_DIR="~/mobash/bin"
+
+################################################################################
+# GENERATED CODE
+################################################################################
+main () 
+{ 
+    function mobash_finalize () 
+    { 
+        echo;
+        print_ln "%-70s" "${YEL}Finalizing script $RS";
+        echo 'main "$@"' >> $MOBASH_BIN_NEW;
+        mv $MOBASH_BIN_NEW $MOBASH_BIN;
+        chmod 755 $MOBASH_BIN;
+        echo -e "$RS${GRN}Complete$RS";
+        mobash_cleanup
+    };
+    function mobash_cleanup () 
+    { 
+        print_ln "%-70s" "${YEL}Cleaning up files $RS";
+        echo -e "$RS${GRN}Complete$RS";
+        rm $MOBASH_BIN_NEW &>/dev/null;
+        rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null;
+        exit
+    };
+    function mobash_resolve_function_for_file () 
+    { 
+        file=$1;
+        func=$2;
+        print_ln "%-70s" "    ${MGT}$func(): $RS$RED";
+        bash -c 'source '$file'; if [[ `declare -f '$func'` == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi';
+        if [[ $? == 1 ]]; then
+            echo -e "No valid function declaration found.$RS";
+            echo;
+            mobash_cleanup;
+        else
+            echo -e "$RS${GRN}Complete$RS";
+        fi
+    };
+    function mobash_resolve_imports () 
+    { 
+        echo -e "${YEL}Building dependency list...$RS";
+        mobash_source_file_name="$1.shs";
+        declare -i MOBASH_IMPORTS_N;
+        declare -a MOBASH_IMPORTS;
+        unset MOBASH_IMPORTS_I;
+        for mobash_include_i in "${!MOBASH_INCLUDE_FILES[@]}";
+        do
+            print_ln "%-70s" "  ${CYN}${MOBASH_INCLUDE_FILES[$mobash_include_i]}: $RS";
+            echo -e "${LGRN}${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}$RS";
+            for mobash_import in `grep "^#@import" "${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}" | awk '{ print $2 }' | sort | uniq`;
+            do
+                mobash_insert_import $mobash_import "${MOBASH_INCLUDE_FILES[$mobash_include_i]}";
+            done;
+        done;
+        declare -a mobash_imports_searched;
+        unset MOBASH_IMPORT_FILES;
+        mobash_imports_needed="true";
+        while [[ -n $mobash_imports_needed ]]; do
+            mobash_imports_needed="";
+            for MOBASH_IMPORTS_N in "${!MOBASH_IMPORTS_I[@]}";
+            do
+                mobash_import="${MOBASH_IMPORTS_I[$MOBASH_IMPORTS_N]}";
+                if [[ ! -n "${mobash_imports_searched[$MOBASH_IMPORTS_N]}" ]]; then
+                    mobash_imports_searched[$MOBASH_IMPORTS_N]="true";
+                    print_ln '%-70s' "  ${CYN}$mobash_import: $RS";
+                    mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`;
+                    if [[ ! -n `mobash_get_file_map_index $mobash_module` ]]; then
+                        mobash_module_file=`resolve_file_in_path "$mobash_module.shm" "$MOBASH_IMPORT_PATH" ":"`;
+                        if [[ ! -n $mobash_module_file ]]; then
+                            echo -e "${RED}No file found in path for: $mobash_module$RS";
+                            mobash_cleanup;
+                        fi;
+                        MOBASH_IMPORT_FILES_I[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module";
+                        MOBASH_IMPORT_FILES[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module_file";
+                    fi;
+                    echo -e "${LGRN}${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_module`]}$RS";
+                    mobash_function_imports=`grep "^#@function $mobash_import:" "${MOBASH_IMPORT_FILES[$mobash_module]}" | awk -F': ' '{print $2}'`;
+                    if [[ -n $mobash_function_imports ]]; then
+                        BIFS="$IFS";
+                        IFS=' ';
+                        for mobash_function_import in $mobash_function_imports;
+                        do
+                            if mobash_insert_import "$mobash_function_import" "${MOBASH_IMPORTS[$MOBASH_IMPORTS_N]}->$mobash_module"; then
+                                mobash_imports_needed="true";
+                            fi;
+                        done;
+                        IFS="$BIFS";
+                    fi;
+                fi;
+            done;
+        done
+    };
+    function mobash_insert_import () 
+    { 
+        if [[ -n "$1" ]]; then
+            print_ln "%-72s" "    ${MGT}$1: $RS";
+            mobash_insert_import_n=`mobash_get_import_index $1`;
+            if [[ -n $mobash_insert_import_n ]]; then
+                echo -e "${LYEL}${MOBASH_IMPORTS[$mobash_insert_import_n]}$RS";
+                return 1;
+            else
+                echo -e "${GRN}New dependency$RS";
+                MOBASH_IMPORTS[${#MOBASH_IMPORTS_I[@]}]="$2";
+                MOBASH_IMPORTS_I[${#MOBASH_IMPORTS_I[@]}]="$1";
+                return 0;
+            fi;
+        fi
+    };
+    function mobash_get_file_map_index () 
+    { 
+        for mobash_file_map_index in "${!MOBASH_IMPORT_FILES_I[@]}";
+        do
+            if [[ "${MOBASH_IMPORT_FILES_I[$mobash_file_map_index]}" == "$1" ]]; then
+                echo $mobash_file_map_index;
+                return;
+            fi;
+        done
+    };
+    function mobash_transfer_import_contents () 
+    { 
+        echo -e "\n${YEL}Writing imports...$RS";
+        mobash_transfer_current="";
+        BIFS="$IFS";
+        IFS='
+';
+        for mobash_import_s in `sort <<< "${MOBASH_IMPORTS_I[*]}"`;
+        do
+            IFS="$BIFS";
+            declare -a mobash_transfer_parts=(${mobash_import_s/./ });
+            if [[ ${mobash_transfer_parts[0]} != $mobash_transfer_current ]]; then
+                if ! mobash_transfer_queued_contents; then
+                    mobash_cleanup;
+                fi;
+                mobash_transfer_current="${mobash_transfer_parts[0]}";
+                unset mobash_transfer_names;
+                declare -a mobash_transfer_names;
+            fi;
+            mobash_transfer_names[${#mobash_transfer_names[@]}]="${mobash_transfer_parts[1]}";
+            IFS='
+';
+        done;
+        IFS="$BIFS";
+        if ! mobash_transfer_queued_contents; then
+            mobash_cleanup;
+        fi
+    };
+    function mobash_transfer_queued_contents () 
+    { 
+        if [[ -n $mobash_transfer_current ]]; then
+            print_ln "%-70s" "  ${CYN}$mobash_transfer_current: $RS";
+            echo -n -e "$RED";
+            ( if source ${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}; then
+                echo -e "$LGRN${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}";
+                for mobash_transfer_name in ${mobash_transfer_names[@]};
+                do
+                    print_ln "%-72s" "    ${MGT}$mobash_transfer_name: $RS";
+                    declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $MOBASH_BIN_NEW;
+                    echo -e "${GRN}Complete$RS";
+                done;
+            else
+                return 1;
+            fi );
+        fi
+    };
+    function mobash_get_import_index () 
+    { 
+        for mobash_get_import_n in "${!MOBASH_IMPORTS_I[@]}";
+        do
+            if [[ "$1" == "${MOBASH_IMPORTS_I[$mobash_get_import_n]}" ]]; then
+                echo $mobash_get_import_n;
+                break;
+            fi;
+        done
+    };
+    function mobash_get_filenames () 
+    { 
+        print_ln "%-70s" "${YEL}Resolving source $RS";
+        MOBASH_SOURCE_FILE=`resolve_file_in_path "$1.shs" "$MOBASH_SOURCE_PATH" ":"`;
+        if [[ "$MOBASH_SOURCE_FILE" == "" ]]; then
+            echo -e "${RED}No source found in path for: $1.shs$RS";
+            exit;
+        fi;
+        MOBASH_SOURCE_FILE_CUSTOM="$MOBASH_SOURCE_FILE.custom";
+        echo -e "${LGRN}$MOBASH_SOURCE_FILE$RS";
+        echo -e "${YEL}Finding includes...$RS";
+        unset MOBASH_INCLUDE_FILES;
+        unset MOBASH_INCLUDE_ABSOLUTE_FILES;
+        MOBASH_INCLUDE_FILES[0]="$1.shs";
+        MOBASH_INCLUDE_ABSOLUTE_FILES[0]="$MOBASH_SOURCE_FILE";
+        for mobash_include_file in `grep "^#@include" "$MOBASH_SOURCE_FILE" | awk '{ print $2 }'`;
+        do
+            print_ln "%-70s" "  ${CYN}$mobash_include_file: $RS";
+            mobash_include_absolute_file=`resolve_file_in_path "$mobash_include_file" "$MOBASH_INCLUDE_PATH" ":"`;
+            if [[ -n "$mobash_include_absolute_file" ]]; then
+                MOBASH_INCLUDE_ABSOLUTE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_absolute_file";
+                MOBASH_INCLUDE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_file";
+                echo -e "${LGRN}$mobash_include_absolute_file$RS";
+            else
+                echo -e "${RED}No source file in path for: $mobash_include_file$RS";
+                mobash_cleanup;
+            fi;
+        done;
+        MOBASH_CONFIG_FILE=`cat $MOBASH_SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }'`;
+        if [[ -n $MOBASH_CONFIG_FILE ]]; then
+            echo;
+            print_ln "%-70s" "${YEL}Resolving config $RS";
+            mobash_temp_config_file=`resolve_file_in_path "$MOBASH_CONFIG_FILE" "$MOBASH_CONFIG_PATH" ":"`;
+            if [[ -n $mobash_temp_config_file ]]; then
+                MOBASH_CONFIG_FILE="$mobash_temp_config_file";
+                echo -e "${LGRN}$mobash_temp_config_file$RS";
+            else
+                echo -e "${RED}No config found in path for: $mobash_temp_config_file$RS";
+                exit;
+            fi;
+        fi;
+        print_ln "%-70s" "${YEL}Resolving output $RS";
+        MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1.sh";
+        MOBASH_BIN_NEW="$MOBASH_BIN.new";
+        echo -e "${LGRN}$MOBASH_BIN$RS"
+    };
+    function mobash_get_custom_contents () 
+    { 
+        echo -e "\n${YEL}Collecting custom...$RS";
+        echo "main() {" > $MOBASH_SOURCE_FILE_CUSTOM;
+        for mobash_include_f in `echo "${MOBASH_INCLUDE_ABSOLUTE_FILES[@]}" | tr ' ' '\n' | tac`;
+        do
+            print_ln "%-70s" "  ${CYN}$mobash_include_f: $RS";
+            cat $mobash_include_f >> $MOBASH_SOURCE_FILE_CUSTOM;
+            echo >> $MOBASH_SOURCE_FILE_CUSTOM;
+            echo -e "${GRN}Complete$RS";
+        done;
+        echo "}" >> $MOBASH_SOURCE_FILE_CUSTOM;
+        print_ln "%-70s" "${YEL}Writing custom $RS";
+        echo -n -e "$RED";
+        if mobash_apply_custom_contents; then
+            echo -e "$RS${GRN}Complete$RS";
+        else
+            echo -e -n "$RS";
+            echo;
+            mobash_cleanup;
+        fi
+    };
+    function mobash_apply_custom_contents () 
+    { 
+        ( if source $MOBASH_SOURCE_FILE_CUSTOM; then
+            declare -f main >> $MOBASH_BIN_NEW;
+        else
+            return 1;
+        fi )
+    };
+    function mobash_init_bin () 
+    { 
+        echo "#!/bin/bash" > $MOBASH_BIN_NEW;
+        echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $MOBASH_BIN_NEW;
+        cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW;
+        echo -e "\n################################################################################" >> $MOBASH_BIN_NEW;
+        echo "# GENERATED CODE" >> $MOBASH_BIN_NEW;
+        echo "################################################################################" >> $MOBASH_BIN_NEW
+    };
+    RS='\033[0;0m';
+    RED='\033[1;31m';
+    GRN='\033[1;32m';
+    LGRN='\033[0;32m';
+    YEL='\033[1;33m';
+    LYEL='\033[0;33m';
+    CYN='\033[0;36m';
+    LCYN='\033[0;36m';
+    BLU='\033[1;34m';
+    LBLU='\033[0;34m';
+    MGT='\033[0;35m';
+    echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS";
+    while [[ $1 != "" ]]; do
+        case $1 in 
+            "-r")
+                RUN="true";
+                shift 1
+            ;;
+            *)
+                source_name=$1;
+                shift 1
+            ;;
+        esac;
+    done;
+    ARGS="$@";
+    if [[ $RUN == "true" ]]; then
+        echo "Run flag was set, args: $ARGS";
+        echo;
+    fi;
+    mobash_get_filenames $source_name;
+    mobash_init_bin;
+    mobash_resolve_imports $source_name;
+    mobash_get_custom_contents;
+    mobash_transfer_import_contents;
+    mobash_finalize
+}
+print_ln () 
+{ 
+    printf "$1" "`echo -n -e \"$2\"`"
+}
+resolve_dir () 
+{ 
+    ( builtin cd `dirname "${1/#~/$HOME}"`'/'`basename "${1/#~/$HOME}"` 2> /dev/null;
+    if [ $? -eq 0 ]; then
+        pwd;
+    fi )
+}
+resolve_file_in_path () 
+{ 
+    resolve_BIFS="$IFS";
+    IFS="$3";
+    for resolve_d in "$2";
+    do
+        if [[ -n $resolve_d ]]; then
+            resolve_d=`resolve_dir $resolve_d`;
+            resolve_f=`find $resolve_d -type f -name "$1" 2>/dev/null | head -1`;
+            if [[ -n $resolve_f ]]; then
+                break;
+            fi;
+        fi;
+    done;
+    IFS="$resolve_BIFS";
+    echo -n "$resolve_f"
+}
+main "$@"

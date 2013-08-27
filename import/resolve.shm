@@ -1,0 +1,30 @@
+#!/bin/bash
+
+#@function resolve.dir:
+resolve_dir() {
+		(builtin cd `dirname "${1/#~/$HOME}"`'/'`basename "${1/#~/$HOME}"` 2>/dev/null; if [ $? -eq 0 ]; then pwd; fi)
+}
+
+#@function resolve.file_in_path: resolve.dir
+# $1: filename
+# $2: path
+# $3: path seperator
+resolve_file_in_path() {
+
+	resolve_BIFS="$IFS"
+	IFS="$3"
+	for resolve_d in "$2"; do
+
+		if [[ $resolve_d ]]; then
+			resolve_d=`resolve_dir $resolve_d`
+			resolve_f=`find $resolve_d -type f -name "$1" 2>/dev/null | head -1`
+			if [[ $resolve_f ]]; then
+				break
+			fi
+		fi
+
+	done
+	IFS="$resolve_BIFS"
+
+	echo -n "$resolve_f"
+}

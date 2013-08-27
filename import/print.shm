@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#@function print.ln
+# $1: printf format
+# $2: string to print
+print_ln() {
+	printf "$1" "`echo -n -e \"$2\"`"
+}
