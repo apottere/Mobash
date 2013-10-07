@@ -1,7 +1,6 @@
 #!/bin/bash
 #@config mobash.conf
 #@include mobash_functions.shs
-#@import resolve.dir
 
 RS='\033[0;0m'
 RED='\033[1;31m'
@@ -16,21 +15,39 @@ LBLU='\033[0;34m'
 MGT='\033[0;35m'
 
 echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS"
+MOBASH_BIN_EXTENSION=''
+MOBASH_PRESERVE_TEMP_FILES=''
 
 while [[ $1 != "" ]]; do
 	case $1 in
-		"-r")
+		"-r"|'--run')
 			RUN="true"
 			shift 1
 			;;
+		'-sh')
+			MOBASH_BIN_EXTENSION='.sh'
+			shift 1
+			;;
+		'-p'|'--preserve')
+			MOBASH_PRESERVE_TEMP_FILES='true'
+			shift 1
+			;;
 		*)
-			source_name=$1
+			source_name="${1%\.sh}"
 			shift 1
 			;;
 	esac
 done
-ARGS="$@"
 
+if [[ $source_name ]]; then
+	echo -e "${LBLU}Building binary: $source_name$MOBASH_BIN_EXTENSION$RS\n"
+else
+	mobash_usage
+	exit 1
+fi
+
+
+#ARGS="$@"
 if [[ $RUN == "true" ]]; then
 	echo "Run flag was set, args: $ARGS"
 	echo

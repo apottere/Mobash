@@ -10,7 +10,11 @@ mobash_finalize() {
 	echo
 	print_ln "%-70s" "${YEL}Finalizing script $RS"
 	echo 'main "$@"' >> $MOBASH_BIN_NEW
-	mv $MOBASH_BIN_NEW $MOBASH_BIN
+	if [[ $MOBASH_PRESERVE_TEMP_FILES ]]; then
+		cp $MOBASH_BIN_NEW $MOBASH_BIN
+	else
+		mv $MOBASH_BIN_NEW $MOBASH_BIN
+	fi
 	chmod 755 $MOBASH_BIN
 	echo -e "$RS${GRN}Complete$RS"
 	mobash_cleanup
@@ -19,8 +23,10 @@ mobash_finalize() {
 mobash_cleanup() {
 	print_ln "%-70s" "${YEL}Cleaning up files $RS"
 	echo -e "$RS${GRN}Complete$RS"
-	rm $MOBASH_BIN_NEW &>/dev/null
-	rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null
+	if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
+		rm $MOBASH_BIN_NEW &>/dev/null
+		rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null
+	fi
 	exit
 }
 
@@ -255,7 +261,7 @@ mobash_get_filenames() {
 
 	# Output
 	print_ln "%-70s" "${YEL}Resolving output $RS"
-	MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1.sh"
+	MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1$MOBASH_BIN_EXTENSION"
 	MOBASH_BIN_NEW="$MOBASH_BIN.new"
 	echo -e "${LGRN}$MOBASH_BIN$RS"
 
@@ -304,10 +310,25 @@ mobash_init_bin() {
 	echo "#!/bin/bash" > $MOBASH_BIN_NEW
 	echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $MOBASH_BIN_NEW
 
-	cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW
+	if [[ $MOBASH_CONFIG_FILE ]]; then
+		cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW
+	fi
 
 	echo -e "\n################################################################################" >> $MOBASH_BIN_NEW
 	echo "# GENERATED CODE" >> $MOBASH_BIN_NEW
 	echo "################################################################################" >> $MOBASH_BIN_NEW
 
+}
+
+mobash_usage() {
+	cat <<EOT
+
+usage: mobash [options] <binary>                    Compile <binary> from sources.
+   or: mobash [options] <binary> -r [args ..]       Compile <binary> and run it with [args ..]
+
+Arguments:
+   -sh                       Append .sh to the compiled binary
+   -p, --preserve            Leave .custom and .new files in place after exit
+
+EOT
 }

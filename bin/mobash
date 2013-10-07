@@ -5,7 +5,7 @@
 # INFO
 ################################################################################
 #
-# Name:		mobash.sh
+# Name:		mobash
 # Author:	Andrew Potter apottere@gmail.com
 # Release:	1.0
 # Date:		
@@ -35,7 +35,11 @@ main ()
         echo;
         print_ln "%-70s" "${YEL}Finalizing script $RS";
         echo 'main "$@"' >> $MOBASH_BIN_NEW;
-        mv $MOBASH_BIN_NEW $MOBASH_BIN;
+        if [[ -n $MOBASH_PRESERVE_TEMP_FILES ]]; then
+            cp $MOBASH_BIN_NEW $MOBASH_BIN;
+        else
+            mv $MOBASH_BIN_NEW $MOBASH_BIN;
+        fi;
         chmod 755 $MOBASH_BIN;
         echo -e "$RS${GRN}Complete$RS";
         mobash_cleanup
@@ -44,8 +48,10 @@ main ()
     { 
         print_ln "%-70s" "${YEL}Cleaning up files $RS";
         echo -e "$RS${GRN}Complete$RS";
-        rm $MOBASH_BIN_NEW &>/dev/null;
-        rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null;
+        if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
+            rm $MOBASH_BIN_NEW &>/dev/null;
+            rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null;
+        fi;
         exit
     };
     function mobash_resolve_function_for_file () 
@@ -240,7 +246,7 @@ main ()
             fi;
         fi;
         print_ln "%-70s" "${YEL}Resolving output $RS";
-        MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1.sh";
+        MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1$MOBASH_BIN_EXTENSION";
         MOBASH_BIN_NEW="$MOBASH_BIN.new";
         echo -e "${LGRN}$MOBASH_BIN$RS"
     };
@@ -279,11 +285,27 @@ main ()
     { 
         echo "#!/bin/bash" > $MOBASH_BIN_NEW;
         echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $MOBASH_BIN_NEW;
-        cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW;
+        if [[ -n $MOBASH_CONFIG_FILE ]]; then
+            cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW;
+        fi;
         echo -e "\n################################################################################" >> $MOBASH_BIN_NEW;
         echo "# GENERATED CODE" >> $MOBASH_BIN_NEW;
         echo "################################################################################" >> $MOBASH_BIN_NEW
     };
+    function mobash_usage () 
+    { 
+        cat 
+    } <<EOT
+
+usage: mobash [options] <binary>                    Compile <binary> from sources.
+   or: mobash [options] <binary> -r [args ..]       Compile <binary> and run it with [args ..]
+
+Arguments:
+   -sh                       Append .sh to the compiled binary
+   -p, --preserve            Leave .custom and .new files in place after exit
+
+EOT
+
     RS='\033[0;0m';
     RED='\033[1;31m';
     GRN='\033[1;32m';
@@ -296,19 +318,34 @@ main ()
     LBLU='\033[0;34m';
     MGT='\033[0;35m';
     echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS";
+    MOBASH_BIN_EXTENSION='';
+    MOBASH_PRESERVE_TEMP_FILES='';
     while [[ $1 != "" ]]; do
         case $1 in 
-            "-r")
+            "-r" | '--run')
                 RUN="true";
                 shift 1
             ;;
+            '-sh')
+                MOBASH_BIN_EXTENSION='.sh';
+                shift 1
+            ;;
+            '-p' | '--preserve')
+                MOBASH_PRESERVE_TEMP_FILES='true';
+                shift 1
+            ;;
             *)
-                source_name=$1;
+                source_name="${1%\.sh}";
                 shift 1
             ;;
         esac;
     done;
-    ARGS="$@";
+    if [[ -n $source_name ]]; then
+        echo -e "${LBLU}Building binary: $source_name$MOBASH_BIN_EXTENSION$RS\n";
+    else
+        mobash_usage;
+        exit 1;
+    fi;
     if [[ $RUN == "true" ]]; then
         echo "Run flag was set, args: $ARGS";
         echo;
