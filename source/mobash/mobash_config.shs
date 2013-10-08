@@ -1,1 +1,67 @@
 #!/bin/bash
+
+#@import resolve.expanded_path
+
+mobash_config_read_file() {
+	if [[ -f $1 && -r $1 ]]; then
+		mobash_config_read_BIFS=$IFS
+		unset IFS
+		for mobash_config_read_i in $(cat $1)
+		do
+			mobash_config_read_BIFS_2=$IFS
+			IFS='='
+			mobash_config_read_j=($mobash_config_read_i)
+			mobash_config_switch_key "${mobash_config_read_j[0]}" "${mobash_config_read_j[1]}"
+
+			IFS=$mobash_config_read_BIFS_2
+		done
+		IFS=$mobash_config_read_BIFS
+	fi
+}
+
+mobash_config_switch_key() {
+	case "$1" in
+		'config_path')
+			MOBASH_CONFIG_PATH="$2"
+			;;
+		'source_path')
+			MOBASH_SOURCE_PATH="$2"
+			;;
+		'include_path')
+			MOBASH_INCLUDE_PATH="$2"
+			;;
+		'import_path')
+			MOBASH_IMPORT_PATH="$2"
+			;;
+		'bin_dir')
+			MOBASH_BIN_DIR="$2"
+			;;
+	esac
+
+}
+
+mobash_config_init() {
+	echo -e "${YEL}Collapsing configs...$RS"
+	mobash_config_init_BIFS=$IFS
+	IFS=$'\n'
+	for mobash_config_init_i in $(resolve_expanded_path $@); do
+		mobash_config_read_file "${mobash_config_init_i}/.mobashrc"
+	done
+	IFS=$mobash_config_init_BIFS
+
+	print_ln '%-70s' "  ${CYN}MOBASH_CONFIG_PATH: $RS"
+	echo -e "${GRN}$MOBASH_CONFIG_PATH"
+
+	print_ln '%-70s' "  ${CYN}MOBASH_SOURCE_PATH: $RS"
+	echo -e "${GRN}$MOBASH_SOURCE_PATH"
+
+	print_ln '%-70s' "  ${CYN}MOBASH_INCLUDE_PATH: $RS"
+	echo -e "${GRN}$MOBASH_INCLUDE_PATH"
+
+	print_ln '%-70s' "  ${CYN}MOBASH_IMPORT_PATH: $RS"
+	echo -e "${GRN}$MOBASH_IMPORT_PATH"
+
+	print_ln '%-70s' "  ${CYN}MOBASH_BIN_DIR: $RS"
+	echo -e "${GRN}$MOBASH_BIN_DIR"
+	echo
+}

@@ -47,12 +47,13 @@ else
 	exit 1
 fi
 
+mobash_config_init "$0"
 
 #ARGS="$@"
-if [[ $RUN == "true" ]]; then
-	echo "Run flag was set, args: $ARGS"
-	echo
-fi
+#if [[ $RUN == "true" ]]; then
+#	echo "Run flag was set, args: $ARGS"
+#	echo
+#fi
 
 mobash_get_filenames $source_name
 
