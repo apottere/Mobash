@@ -1,0 +1,3 @@
+[submodule "import/bashlib"]
+	path = import/bashlib
+	url = git@github.com:apottere/bashlib.git
