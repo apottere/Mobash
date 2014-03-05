@@ -6,10 +6,9 @@
 #@import resolve.file_in_path
 
 mobash_finalize() {
-
 	echo
 	print_ln "%-70s" "${YEL}Finalizing script $RS"
-	echo 'main "$@"' >> $MOBASH_BIN_NEW
+	echo 'mo_main "$@"' >> $MOBASH_BIN_NEW
 	if [[ $MOBASH_PRESERVE_TEMP_FILES ]]; then
 		cp $MOBASH_BIN_NEW $MOBASH_BIN
 	else
@@ -34,7 +33,7 @@ mobash_resolve_function_for_file() {
 	file=$1
 	func=$2
 	print_ln "%-70s" "    ${MGT}$func(): $RS$RED"
-	bash -c 'source '$file'; if [[ `declare -f '$func'` == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi'
+	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi'
 
 	if [[ $? == 1 ]]; then
 		echo -e "No valid function declaration found.$RS"
@@ -271,7 +270,7 @@ mobash_get_custom_contents() {
 
 	echo -e "\n${YEL}Collecting custom...$RS"
 
-	echo "main() {" > $MOBASH_SOURCE_FILE_CUSTOM
+	echo "mo_main() {" > $MOBASH_SOURCE_FILE_CUSTOM
 		for (( mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- )) ; do
 		mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]}
 		print_ln "%-70s" "  ${CYN}$mobash_include_f: $RS"
@@ -298,7 +297,7 @@ mobash_get_custom_contents() {
 mobash_apply_custom_contents() {
 	(
 		if source $MOBASH_SOURCE_FILE_CUSTOM; then
-			declare -f main >> $MOBASH_BIN_NEW
+			declare -f mo_main >> $MOBASH_BIN_NEW
 		else
 			return 1
 		fi

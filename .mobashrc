@@ -1,5 +1,5 @@
-config_path=~/Mobash/source
-source_path=~/Mobash/source
-include_path=~/Mobash/source
-import_path=~/Mobash/import
-bin_dir=~/Mobash/bin
+config_path=~/.mobash/source
+source_path=~/.mobash/source
+include_path=~/.mobash/source
+import_path=~/.mobash/import
+bin_dir=~/.mobash/bin

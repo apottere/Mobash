@@ -30,7 +30,7 @@ MOBASH_BIN_DIR=""       # bin_dir
 ################################################################################
 # GENERATED CODE
 ################################################################################
-main () 
+mo_main () 
 { 
     function mobash_config_read_file () 
     { 
@@ -95,7 +95,7 @@ main ()
     { 
         echo;
         print_ln "%-70s" "${YEL}Finalizing script $RS";
-        echo 'main "$@"' >> $MOBASH_BIN_NEW;
+        echo 'mo_main "$@"' >> $MOBASH_BIN_NEW;
         if [[ -n $MOBASH_PRESERVE_TEMP_FILES ]]; then
             cp $MOBASH_BIN_NEW $MOBASH_BIN;
         else
@@ -110,8 +110,8 @@ main ()
         print_ln "%-70s" "${YEL}Cleaning up files $RS";
         echo -e "$RS${GRN}Complete$RS";
         if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
-            rm $MOBASH_BIN_NEW &>/dev/null;
-            rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null;
+            rm $MOBASH_BIN_NEW >&/dev/null;
+            rm $MOBASH_SOURCE_FILE_CUSTOM >&/dev/null;
         fi;
         exit
     };
@@ -314,7 +314,7 @@ main ()
     function mobash_get_custom_contents () 
     { 
         echo -e "\n${YEL}Collecting custom...$RS";
-        echo "main() {" > $MOBASH_SOURCE_FILE_CUSTOM;
+        echo "mo_main() {" > $MOBASH_SOURCE_FILE_CUSTOM;
         for ((mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- ))
         do
             mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]};
@@ -337,7 +337,7 @@ main ()
     function mobash_apply_custom_contents () 
     { 
         ( if source $MOBASH_SOURCE_FILE_CUSTOM; then
-            declare -f main >> $MOBASH_BIN_NEW;
+            declare -f mo_main >> $MOBASH_BIN_NEW;
         else
             return 1;
         fi )
@@ -355,8 +355,7 @@ main ()
     };
     function mobash_usage () 
     { 
-        cat 
-    } <<EOT
+        cat  <<EOT
 
 usage: mobash [options] <binary>                    Compile <binary> from sources.
    or: mobash [options] <binary> -r [args ..]       Compile <binary> and run it with [args ..]
@@ -367,6 +366,7 @@ Arguments:
 
 EOT
 
+    }
     RS='\033[0;0m';
     RED='\033[1;31m';
     GRN='\033[1;32m';
@@ -421,42 +421,44 @@ print_ln ()
 }
 resolve_dir () 
 { 
-    if [[ -f "${1/#~/$HOME}" ]]; then
-        resolve_dir "$(dirname ${1/#~/$HOME})";
+    local p="${1/#~/$HOME}";
+    if [[ -f $p ]]; then
+        resolve_dir $(dirname "$p");
     else
-        if [[ -d "${1/#~/$HOME}" ]]; then
-            ( builtin cd "$(dirname ${1/#~/$HOME})/$(basename ${1/#~/$HOME})" 2> /dev/null && pwd );
+        if [[ -d $p ]]; then
+            ( builtin cd "$p" >&/dev/null && pwd "$2" );
         fi;
     fi
 }
 resolve_expanded_path () 
 { 
-    resolve_current_dir="$(resolve_dir $1)";
-    resolve_expanded_dirs=("$resolve_current_dir");
-    while [[ $resolve_current_dir != '/' ]]; do
-        resolve_current_dir="$(dirname $resolve_current_dir)";
-        resolve_expanded_dirs=("$resolve_current_dir" "${resolve_expanded_dirs[@]}");
+    local current_dir="$(resolve_dir ${1:-.})";
+    local expanded_dirs=("$current_dir");
+    local d;
+    while [[ $current_dir != '/' ]]; do
+        current_dir="$(dirname $current_dir)";
+        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
     done;
-    for resolve_i in "${resolve_expanded_dirs[@]}";
+    for d in "${expanded_dirs[@]}";
     do
-        echo "$resolve_i";
+        echo "$d";
     done
 }
 resolve_file_in_path () 
 { 
-    resolve_BIFS="$IFS";
+    local d;
+    local f;
     IFS="$3";
-    for resolve_d in "$2";
+    for d in $2;
     do
-        if [[ -n $resolve_d ]]; then
-            resolve_d=`resolve_dir $resolve_d`;
-            resolve_f=`find $resolve_d -type f -name "$1" 2>/dev/null | head -1`;
-            if [[ -n $resolve_f ]]; then
+        if [[ -n $d ]]; then
+            d=$(resolve_dir $d);
+            f=$(find $d -type f -name "$1" 2>/dev/null | head -1);
+            if [[ -n $f ]]; then
                 break;
             fi;
         fi;
     done;
-    IFS="$resolve_BIFS";
-    echo -n "$resolve_f"
+    echo -n "$f"
 }
-main "$@"
+mo_main "$@"

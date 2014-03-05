@@ -1,0 +1,13 @@
+#!/bin/bash
+
+#@import error
+
+func1() {
+	error 'things happened'
+}
+
+func2() {
+	func1
+}
+
+func2
