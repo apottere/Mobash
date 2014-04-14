@@ -7,7 +7,7 @@
 
 mobash_finalize() {
 	echo
-	print_ln "%-70s" "${YEL}Finalizing script $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL
 	echo 'mo_main "$@"' >> $MOBASH_BIN_NEW
 	if [[ $MOBASH_PRESERVE_TEMP_FILES ]]; then
 		cp $MOBASH_BIN_NEW $MOBASH_BIN
@@ -20,7 +20,7 @@ mobash_finalize() {
 }
 
 mobash_cleanup() {
-	print_ln "%-70s" "${YEL}Cleaning up files $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL
 	echo -e "$RS${GRN}Complete$RS"
 	if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
 		rm $MOBASH_BIN_NEW &>/dev/null
@@ -32,7 +32,7 @@ mobash_cleanup() {
 mobash_resolve_function_for_file() {
 	file=$1
 	func=$2
-	print_ln "%-70s" "    ${MGT}$func(): $RS$RED"
+	print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT; echo -n -e "$RED"
 	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi'
 
 	if [[ $? == 1 ]]; then
@@ -54,7 +54,7 @@ mobash_resolve_imports() {
 	unset MOBASH_IMPORTS_I
 	for mobash_include_i in "${!MOBASH_INCLUDE_FILES[@]}"
 	do
-		print_ln "%-70s" "  ${CYN}${MOBASH_INCLUDE_FILES[$mobash_include_i]}: $RS"
+		print_ln "%-${FORMAT_WIDTH}s" "  ${MOBASH_INCLUDE_FILES[$mobash_include_i]}: " $CYN
 		echo -e "${LGRN}${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}$RS"
 		for mobash_import in `grep "^#@import" "${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}" | awk '{ print $2 }' | sort | uniq`
 		do
@@ -75,7 +75,7 @@ mobash_resolve_imports() {
 			# only do unsearched imports
 			if [[ ! "${mobash_imports_searched[$MOBASH_IMPORTS_N]}" ]]; then
 				mobash_imports_searched[$MOBASH_IMPORTS_N]="true"
-				print_ln '%-70s' "  ${CYN}$mobash_import: $RS"
+				print_ln "%-${FORMAT_WIDTH}s" "  $mobash_import: " $CYN
 				mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`
 
 				# if no file in map, find the file for that function.
@@ -116,7 +116,7 @@ mobash_resolve_imports() {
 
 mobash_insert_import() {
 	if [[ "$1" ]]; then
-		print_ln "%-72s" "    ${MGT}$1: $RS"
+		print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT
 
 		mobash_insert_import_n=`mobash_get_import_index $1`
 
@@ -175,7 +175,7 @@ mobash_transfer_import_contents() {
 
 mobash_transfer_queued_contents() {
 	if [[ $mobash_transfer_current ]]; then
-		print_ln "%-70s" "  ${CYN}$mobash_transfer_current: $RS"
+		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_transfer_current: " $CYN
 		echo -n -e "$RED"
 		(
 		if source ${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]};
@@ -183,7 +183,7 @@ mobash_transfer_queued_contents() {
 			echo -e "$LGRN${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}"
 			for mobash_transfer_name in ${mobash_transfer_names[@]};
 			do 
-				print_ln "%-72s" "    ${MGT}$mobash_transfer_name: $RS"
+				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $mobash_transfer_name: " $MGT
 				declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $MOBASH_BIN_NEW
 				echo -e "${GRN}Complete$RS"
 			done
@@ -210,7 +210,7 @@ mobash_get_import_index() {
 mobash_get_filenames() {
 
 	# Source
-	print_ln "%-70s" "${YEL}Resolving source $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "Resolving source " $YEL
 
 	MOBASH_SOURCE_FILE=`resolve_file_in_path "$1.shs" "$MOBASH_SOURCE_PATH" ":"`
 
@@ -230,7 +230,7 @@ mobash_get_filenames() {
 	MOBASH_INCLUDE_ABSOLUTE_FILES[0]="$MOBASH_SOURCE_FILE"
 	for mobash_include_file in `grep "^#@include" "$MOBASH_SOURCE_FILE" | awk '{ print $2 }'`
 	do
-		print_ln "%-70s" "  ${CYN}$mobash_include_file: $RS"
+		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_file: " $CYN
 		mobash_include_absolute_file=`resolve_file_in_path "$mobash_include_file" "$MOBASH_INCLUDE_PATH" ":"`
 		if [[ "$mobash_include_absolute_file" ]]; then
 			MOBASH_INCLUDE_ABSOLUTE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_absolute_file"
@@ -246,7 +246,7 @@ mobash_get_filenames() {
 	MOBASH_CONFIG_FILE=`cat $MOBASH_SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }'`
 	if [[ $MOBASH_CONFIG_FILE ]]; then
 		echo
-		print_ln "%-70s" "${YEL}Resolving config $RS"
+		print_ln "%-${FORMAT_WIDTH}s" "Resolving config " $YEL
 		mobash_temp_config_file=`resolve_file_in_path "$MOBASH_CONFIG_FILE" "$MOBASH_CONFIG_PATH" ":"`
 
 		if [[ $mobash_temp_config_file ]]; then
@@ -259,7 +259,7 @@ mobash_get_filenames() {
 	fi
 
 	# Output
-	print_ln "%-70s" "${YEL}Resolving output $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "Resolving output " $YEL
 	MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1$MOBASH_BIN_EXTENSION"
 	MOBASH_BIN_NEW="$MOBASH_BIN.new"
 	echo -e "${LGRN}$MOBASH_BIN$RS"
@@ -273,7 +273,7 @@ mobash_get_custom_contents() {
 	echo "mo_main() {" > $MOBASH_SOURCE_FILE_CUSTOM
 		for (( mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- )) ; do
 		mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]}
-		print_ln "%-70s" "  ${CYN}$mobash_include_f: $RS"
+		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_f: " $CYN
 		cat $mobash_include_f >> $MOBASH_SOURCE_FILE_CUSTOM
 		echo >> $MOBASH_SOURCE_FILE_CUSTOM
 		echo -e "${GRN}Complete$RS"
@@ -281,7 +281,7 @@ mobash_get_custom_contents() {
 
 	echo "}" >> $MOBASH_SOURCE_FILE_CUSTOM
 
-	print_ln "%-70s" "${YEL}Writing custom $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "Writing custom " $YEL
 	echo -n -e "$RED"
 	if mobash_apply_custom_contents; then
 		echo -e "$RS${GRN}Complete$RS"

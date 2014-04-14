@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#@import error
+#@import error.stack
 
 func1() {
-	error 'things happened'
+	error_stack 'things happened'
 }
 
 func2() {

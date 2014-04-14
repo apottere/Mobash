@@ -79,22 +79,22 @@ mo_main ()
             mobash_config_read_file "${mobash_config_init_i}/.mobashrc";
         done;
         IFS=$mobash_config_init_BIFS;
-        print_ln '%-70s' "  ${CYN}MOBASH_CONFIG_PATH: $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_CONFIG_PATH: " $CYN;
         echo -e "${GRN}$MOBASH_CONFIG_PATH";
-        print_ln '%-70s' "  ${CYN}MOBASH_SOURCE_PATH: $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_SOURCE_PATH: " $CYN;
         echo -e "${GRN}$MOBASH_SOURCE_PATH";
-        print_ln '%-70s' "  ${CYN}MOBASH_INCLUDE_PATH: $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_INCLUDE_PATH: " $CYN;
         echo -e "${GRN}$MOBASH_INCLUDE_PATH";
-        print_ln '%-70s' "  ${CYN}MOBASH_IMPORT_PATH: $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_IMPORT_PATH: " $CYN;
         echo -e "${GRN}$MOBASH_IMPORT_PATH";
-        print_ln '%-70s' "  ${CYN}MOBASH_BIN_DIR: $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_BIN_DIR: " $CYN;
         echo -e "${GRN}$MOBASH_BIN_DIR";
         echo
     };
     function mobash_finalize () 
     { 
         echo;
-        print_ln "%-70s" "${YEL}Finalizing script $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL;
         echo 'mo_main "$@"' >> $MOBASH_BIN_NEW;
         if [[ -n $MOBASH_PRESERVE_TEMP_FILES ]]; then
             cp $MOBASH_BIN_NEW $MOBASH_BIN;
@@ -107,7 +107,7 @@ mo_main ()
     };
     function mobash_cleanup () 
     { 
-        print_ln "%-70s" "${YEL}Cleaning up files $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL;
         echo -e "$RS${GRN}Complete$RS";
         if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
             rm $MOBASH_BIN_NEW >&/dev/null;
@@ -119,8 +119,9 @@ mo_main ()
     { 
         file=$1;
         func=$2;
-        print_ln "%-70s" "    ${MGT}$func(): $RS$RED";
-        bash -c 'source '$file'; if [[ `declare -f '$func'` == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi';
+        print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT;
+        echo -n -e "$RED";
+        bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi';
         if [[ $? == 1 ]]; then
             echo -e "No valid function declaration found.$RS";
             echo;
@@ -138,7 +139,7 @@ mo_main ()
         unset MOBASH_IMPORTS_I;
         for mobash_include_i in "${!MOBASH_INCLUDE_FILES[@]}";
         do
-            print_ln "%-70s" "  ${CYN}${MOBASH_INCLUDE_FILES[$mobash_include_i]}: $RS";
+            print_ln "%-${FORMAT_WIDTH}s" "  ${MOBASH_INCLUDE_FILES[$mobash_include_i]}: " $CYN;
             echo -e "${LGRN}${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}$RS";
             for mobash_import in `grep "^#@import" "${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}" | awk '{ print $2 }' | sort | uniq`;
             do
@@ -155,7 +156,7 @@ mo_main ()
                 mobash_import="${MOBASH_IMPORTS_I[$MOBASH_IMPORTS_N]}";
                 if [[ ! -n "${mobash_imports_searched[$MOBASH_IMPORTS_N]}" ]]; then
                     mobash_imports_searched[$MOBASH_IMPORTS_N]="true";
-                    print_ln '%-70s' "  ${CYN}$mobash_import: $RS";
+                    print_ln "%-${FORMAT_WIDTH}s" "  $mobash_import: " $CYN;
                     mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`;
                     if [[ ! -n `mobash_get_file_map_index $mobash_module` ]]; then
                         mobash_module_file=`resolve_file_in_path "$mobash_module.shm" "$MOBASH_IMPORT_PATH" ":"`;
@@ -186,7 +187,7 @@ mo_main ()
     function mobash_insert_import () 
     { 
         if [[ -n "$1" ]]; then
-            print_ln "%-72s" "    ${MGT}$1: $RS";
+            print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT;
             mobash_insert_import_n=`mobash_get_import_index $1`;
             if [[ -n $mobash_insert_import_n ]]; then
                 echo -e "${LYEL}${MOBASH_IMPORTS[$mobash_insert_import_n]}$RS";
@@ -240,13 +241,13 @@ mo_main ()
     function mobash_transfer_queued_contents () 
     { 
         if [[ -n $mobash_transfer_current ]]; then
-            print_ln "%-70s" "  ${CYN}$mobash_transfer_current: $RS";
+            print_ln "%-${FORMAT_WIDTH}s" "  $mobash_transfer_current: " $CYN;
             echo -n -e "$RED";
             ( if source ${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}; then
                 echo -e "$LGRN${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}";
                 for mobash_transfer_name in ${mobash_transfer_names[@]};
                 do
-                    print_ln "%-72s" "    ${MGT}$mobash_transfer_name: $RS";
+                    print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $mobash_transfer_name: " $MGT;
                     declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $MOBASH_BIN_NEW;
                     echo -e "${GRN}Complete$RS";
                 done;
@@ -267,7 +268,7 @@ mo_main ()
     };
     function mobash_get_filenames () 
     { 
-        print_ln "%-70s" "${YEL}Resolving source $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "Resolving source " $YEL;
         MOBASH_SOURCE_FILE=`resolve_file_in_path "$1.shs" "$MOBASH_SOURCE_PATH" ":"`;
         if [[ "$MOBASH_SOURCE_FILE" == "" ]]; then
             echo -e "${RED}No source found in path for: $1.shs$RS";
@@ -282,7 +283,7 @@ mo_main ()
         MOBASH_INCLUDE_ABSOLUTE_FILES[0]="$MOBASH_SOURCE_FILE";
         for mobash_include_file in `grep "^#@include" "$MOBASH_SOURCE_FILE" | awk '{ print $2 }'`;
         do
-            print_ln "%-70s" "  ${CYN}$mobash_include_file: $RS";
+            print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_file: " $CYN;
             mobash_include_absolute_file=`resolve_file_in_path "$mobash_include_file" "$MOBASH_INCLUDE_PATH" ":"`;
             if [[ -n "$mobash_include_absolute_file" ]]; then
                 MOBASH_INCLUDE_ABSOLUTE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_absolute_file";
@@ -296,7 +297,7 @@ mo_main ()
         MOBASH_CONFIG_FILE=`cat $MOBASH_SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }'`;
         if [[ -n $MOBASH_CONFIG_FILE ]]; then
             echo;
-            print_ln "%-70s" "${YEL}Resolving config $RS";
+            print_ln "%-${FORMAT_WIDTH}s" "Resolving config " $YEL;
             mobash_temp_config_file=`resolve_file_in_path "$MOBASH_CONFIG_FILE" "$MOBASH_CONFIG_PATH" ":"`;
             if [[ -n $mobash_temp_config_file ]]; then
                 MOBASH_CONFIG_FILE="$mobash_temp_config_file";
@@ -306,7 +307,7 @@ mo_main ()
                 exit;
             fi;
         fi;
-        print_ln "%-70s" "${YEL}Resolving output $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "Resolving output " $YEL;
         MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1$MOBASH_BIN_EXTENSION";
         MOBASH_BIN_NEW="$MOBASH_BIN.new";
         echo -e "${LGRN}$MOBASH_BIN$RS"
@@ -318,13 +319,13 @@ mo_main ()
         for ((mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- ))
         do
             mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]};
-            print_ln "%-70s" "  ${CYN}$mobash_include_f: $RS";
+            print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_f: " $CYN;
             cat $mobash_include_f >> $MOBASH_SOURCE_FILE_CUSTOM;
             echo >> $MOBASH_SOURCE_FILE_CUSTOM;
             echo -e "${GRN}Complete$RS";
         done;
         echo "}" >> $MOBASH_SOURCE_FILE_CUSTOM;
-        print_ln "%-70s" "${YEL}Writing custom $RS";
+        print_ln "%-${FORMAT_WIDTH}s" "Writing custom " $YEL;
         echo -n -e "$RED";
         if mobash_apply_custom_contents; then
             echo -e "$RS${GRN}Complete$RS";
@@ -381,6 +382,7 @@ EOT
     echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS";
     MOBASH_BIN_EXTENSION='';
     MOBASH_PRESERVE_TEMP_FILES='';
+    FORMAT_WIDTH='70';
     while [[ $1 != "" ]]; do
         case $1 in 
             "-r" | '--run')
@@ -417,7 +419,9 @@ EOT
 }
 print_ln () 
 { 
-    printf "$1" "`echo -n -e \"$2\"`"
+    [[ -n $3 ]] && echo -n -e "$3";
+    printf "$1" "$(echo -n -e "$2")";
+    [[ -n $3 ]] && echo -n -e '\033[0;0m'
 }
 resolve_dir () 
 { 

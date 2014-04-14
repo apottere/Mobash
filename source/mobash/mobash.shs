@@ -18,6 +18,7 @@ MGT='\033[0;35m'
 echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS"
 MOBASH_BIN_EXTENSION=''
 MOBASH_PRESERVE_TEMP_FILES=''
+FORMAT_WIDTH='70'
 
 while [[ $1 != "" ]]; do
 	case $1 in

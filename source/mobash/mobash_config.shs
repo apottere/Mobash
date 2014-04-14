@@ -49,19 +49,19 @@ mobash_config_init() {
 	done
 	IFS=$mobash_config_init_BIFS
 
-	print_ln '%-70s' "  ${CYN}MOBASH_CONFIG_PATH: $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_CONFIG_PATH: " $CYN
 	echo -e "${GRN}$MOBASH_CONFIG_PATH"
 
-	print_ln '%-70s' "  ${CYN}MOBASH_SOURCE_PATH: $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_SOURCE_PATH: " $CYN
 	echo -e "${GRN}$MOBASH_SOURCE_PATH"
 
-	print_ln '%-70s' "  ${CYN}MOBASH_INCLUDE_PATH: $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_INCLUDE_PATH: " $CYN
 	echo -e "${GRN}$MOBASH_INCLUDE_PATH"
 
-	print_ln '%-70s' "  ${CYN}MOBASH_IMPORT_PATH: $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_IMPORT_PATH: " $CYN
 	echo -e "${GRN}$MOBASH_IMPORT_PATH"
 
-	print_ln '%-70s' "  ${CYN}MOBASH_BIN_DIR: $RS"
+	print_ln "%-${FORMAT_WIDTH}s" "  MOBASH_BIN_DIR: " $CYN
 	echo -e "${GRN}$MOBASH_BIN_DIR"
 	echo
 }
