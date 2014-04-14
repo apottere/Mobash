@@ -9,7 +9,7 @@ mobash_finalize() {
 	echo
 	print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL
 	echo 'mo_main "$@"' >> $MOBASH_BIN_NEW
-	if [[ $MOBASH_PRESERVE_TEMP_FILES ]]; then
+	if [[ $PRESERVE_TEMP_FILES ]]; then
 		cp $MOBASH_BIN_NEW $MOBASH_BIN
 	else
 		mv $MOBASH_BIN_NEW $MOBASH_BIN
@@ -22,7 +22,7 @@ mobash_finalize() {
 mobash_cleanup() {
 	print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL
 	echo -e "$RS${GRN}Complete$RS"
-	if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
+	if [[ -z $PRESERVE_TEMP_FILES ]]; then
 		rm $MOBASH_BIN_NEW &>/dev/null
 		rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null
 	fi

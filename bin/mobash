@@ -96,7 +96,7 @@ mo_main ()
         echo;
         print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL;
         echo 'mo_main "$@"' >> $MOBASH_BIN_NEW;
-        if [[ -n $MOBASH_PRESERVE_TEMP_FILES ]]; then
+        if [[ -n $PRESERVE_TEMP_FILES ]]; then
             cp $MOBASH_BIN_NEW $MOBASH_BIN;
         else
             mv $MOBASH_BIN_NEW $MOBASH_BIN;
@@ -109,7 +109,7 @@ mo_main ()
     { 
         print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL;
         echo -e "$RS${GRN}Complete$RS";
-        if [[ -z $MOBASH_PRESERVE_TEMP_FILES ]]; then
+        if [[ -z $PRESERVE_TEMP_FILES ]]; then
             rm $MOBASH_BIN_NEW >&/dev/null;
             rm $MOBASH_SOURCE_FILE_CUSTOM >&/dev/null;
         fi;
@@ -368,21 +368,21 @@ Arguments:
 EOT
 
     }
-    RS='\033[0;0m';
-    RED='\033[1;31m';
-    GRN='\033[1;32m';
-    LGRN='\033[0;32m';
-    YEL='\033[1;33m';
-    LYEL='\033[0;33m';
-    CYN='\033[0;36m';
-    LCYN='\033[0;36m';
-    BLU='\033[1;34m';
-    LBLU='\033[0;34m';
-    MGT='\033[0;35m';
+    local RS='\033[0;0m';
+    local RED='\033[1;31m';
+    local GRN='\033[1;32m';
+    local LGRN='\033[0;32m';
+    local YEL='\033[1;33m';
+    local LYEL='\033[0;33m';
+    local CYN='\033[0;36m';
+    local LCYN='\033[0;36m';
+    local BLU='\033[1;34m';
+    local LBLU='\033[0;34m';
+    local MGT='\033[0;35m';
     echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS";
-    MOBASH_BIN_EXTENSION='';
-    MOBASH_PRESERVE_TEMP_FILES='';
-    FORMAT_WIDTH='70';
+    local BIN_EXTENSION;
+    local PRESERVE_TEMP_FILES;
+    local FORMAT_WIDTH='70';
     while [[ $1 != "" ]]; do
         case $1 in 
             "-r" | '--run')
@@ -390,11 +390,11 @@ EOT
                 shift 1
             ;;
             '-sh')
-                MOBASH_BIN_EXTENSION='.sh';
+                BIN_EXTENSION='.sh';
                 shift 1
             ;;
             '-p' | '--preserve')
-                MOBASH_PRESERVE_TEMP_FILES='true';
+                PRESERVE_TEMP_FILES='true';
                 shift 1
             ;;
             *)
@@ -404,7 +404,7 @@ EOT
         esac;
     done;
     if [[ -n $source_name ]]; then
-        echo -e "${LBLU}Building binary: $source_name$MOBASH_BIN_EXTENSION$RS\n";
+        echo -e "${LBLU}Building binary: $source_name$BIN_EXTENSION$RS\n";
     else
         mobash_usage;
         exit 1;
