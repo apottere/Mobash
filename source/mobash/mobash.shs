@@ -49,6 +49,21 @@ else
 	exit 1
 fi
 
+local BIN
+local BIN_NEW
+local CONFIG_FILE
+local SOURCE_FILE
+local SOURCE_FILE_CUSTOM
+
+local INCLUDE_FILES INCLUDE_FILES_i
+local MOBASH_IMPORTS MOBASH_IMPORTS_i
+
+local BIN_DIR
+local IMPORT_PATH
+local INCLUDE_PATH
+local SOURCE_PATH
+local CONFIG_PATH
+
 mobash_config_init "$0"
 
 #ARGS="$@"

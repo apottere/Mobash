@@ -5,16 +5,35 @@
 #@import resolve.dir
 #@import resolve.file_in_path
 
+#@import arrays.init
+#@import arrays.len
+#@import arrays.set
+#@import arrays.index_of
+#@import arrays.dump
+
+#@import dict.init
+#@import dict.dump
+#@import dict.set
+#@import dict.get_index_array
+#@import dict.get_keys
+#@import dict.get
+
+#@import error.do
+#@import error.file
+#@import error.format
+#@import error.exit
+
 mobash_finalize() {
+
 	echo
 	print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL
-	echo 'mo_main "$@"' >> $MOBASH_BIN_NEW
+	echo 'mo_main "$@"' >> $BIN_NEW
 	if [[ $PRESERVE_TEMP_FILES ]]; then
-		cp $MOBASH_BIN_NEW $MOBASH_BIN
+		cp $BIN_NEW $BIN
 	else
-		mv $MOBASH_BIN_NEW $MOBASH_BIN
+		mv $BIN_NEW $BIN
 	fi
-	chmod 755 $MOBASH_BIN
+	chmod 755 $BIN
 	echo -e "$RS${GRN}Complete$RS"
 	mobash_cleanup
 }
@@ -23,17 +42,17 @@ mobash_cleanup() {
 	print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL
 	echo -e "$RS${GRN}Complete$RS"
 	if [[ -z $PRESERVE_TEMP_FILES ]]; then
-		rm $MOBASH_BIN_NEW &>/dev/null
-		rm $MOBASH_SOURCE_FILE_CUSTOM &>/dev/null
+		rm $BIN_NEW &>/dev/null
+		rm $SOURCE_FILE_CUSTOM &>/dev/null
 	fi
-	exit
+	exit 0
 }
 
 mobash_resolve_function_for_file() {
 	file=$1
 	func=$2
 	print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT; echo -n -e "$RED"
-	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$MOBASH_BIN_NEW'; fi'
+	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi'
 
 	if [[ $? == 1 ]]; then
 		echo -e "No valid function declaration found.$RS"
@@ -47,20 +66,24 @@ mobash_resolve_function_for_file() {
 # $1: Root for tree (source file name)
 mobash_resolve_imports() {
 	echo -e "${YEL}Building dependency list...$RS"
-	mobash_source_file_name="$1.shs"
 
-	declare -i MOBASH_IMPORTS_N
-	declare -a MOBASH_IMPORTS
-	unset MOBASH_IMPORTS_I
-	for mobash_include_i in "${!MOBASH_INCLUDE_FILES[@]}"
+	dict_init MOBASH_IMPORTS
+
+	local include; unset IFS
+	for include in $(dict_get_keys INCLUDE_FILES)
 	do
-		print_ln "%-${FORMAT_WIDTH}s" "  ${MOBASH_INCLUDE_FILES[$mobash_include_i]}: " $CYN
-		echo -e "${LGRN}${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}$RS"
-		for mobash_import in `grep "^#@import" "${MOBASH_INCLUDE_ABSOLUTE_FILES[$mobash_include_i]}" | awk '{ print $2 }' | sort | uniq`
+		local absolute="$(dict_get INCLUDE_FILES $include)"
+		print_ln "%-${FORMAT_WIDTH}s" "  $include: " $CYN
+		echo -e "${LGRN}$absolute$RS"
+
+		local import; unset IFS
+		for import in $(grep "^#@import" "$absolute" | awk '{ print $2 }' | sort | uniq)
 		do
-			mobash_insert_import $mobash_import "${MOBASH_INCLUDE_FILES[$mobash_include_i]}"
+			mobash_insert_import "$import" "$absolute"
 		done
 	done
+
+	dict_dump MOBASH_IMPORTS
 
 	declare -a mobash_imports_searched
 	unset MOBASH_IMPORT_FILES
@@ -79,8 +102,8 @@ mobash_resolve_imports() {
 				mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`
 
 				# if no file in map, find the file for that function.
-				if [[ ! `mobash_get_file_map_index $mobash_module` ]]; then
-					mobash_module_file=`resolve_file_in_path "$mobash_module.shm" "$MOBASH_IMPORT_PATH" ":"`
+				if [[ ! $(mobash_get_file_map_index $mobash_module) ]]; then
+					mobash_module_file=$(resolve_file_in_path "$mobash_module.shm" "$IMPORT_PATH" ":")
 					if [[ ! $mobash_module_file ]]; then
 						echo -e "${RED}No file found in path for: $mobash_module$RS"
 						mobash_cleanup
@@ -118,15 +141,13 @@ mobash_insert_import() {
 	if [[ "$1" ]]; then
 		print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT
 
-		mobash_insert_import_n=`mobash_get_import_index $1`
-
-		if [[ $mobash_insert_import_n ]]; then
-			echo -e "${LYEL}${MOBASH_IMPORTS[$mobash_insert_import_n]}$RS"
+		local current="$(dict_get MOBASH_IMPORTS "$1")"
+		if [[ $current ]]; then
+			echo -e "${LYEL}$current$RS"
 			return 1
 		else
 			echo -e "${GRN}New dependency$RS"
-			MOBASH_IMPORTS[${#MOBASH_IMPORTS_I[@]}]="$2"
-			MOBASH_IMPORTS_I[${#MOBASH_IMPORTS_I[@]}]="$1"
+			dict_set MOBASH_IMPORTS "$1" "$2"
 			return 0
 		fi
 	fi
@@ -184,7 +205,7 @@ mobash_transfer_queued_contents() {
 			for mobash_transfer_name in ${mobash_transfer_names[@]};
 			do 
 				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $mobash_transfer_name: " $MGT
-				declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $MOBASH_BIN_NEW
+				declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $BIN_NEW
 				echo -e "${GRN}Complete$RS"
 			done
 		else
@@ -194,75 +215,68 @@ mobash_transfer_queued_contents() {
 	fi
 }
 
-# $1: Import name
-mobash_get_import_index() {
-	for mobash_get_import_n in "${!MOBASH_IMPORTS_I[@]}"
-	do
-		if [[ "$1" == "${MOBASH_IMPORTS_I[$mobash_get_import_n]}" ]]; then
-			echo $mobash_get_import_n
-			break
-		fi
-	done
-
-}
-
 # $1: Source filename
 mobash_get_filenames() {
 
 	# Source
 	print_ln "%-${FORMAT_WIDTH}s" "Resolving source " $YEL
 
-	MOBASH_SOURCE_FILE=`resolve_file_in_path "$1.shs" "$MOBASH_SOURCE_PATH" ":"`
+	SOURCE_FILE=$(resolve_file_in_path "$1.shs" "$SOURCE_PATH" ":")
 
 
-	if [[ "$MOBASH_SOURCE_FILE" == "" ]]; then
+	if [[ ! $SOURCE_FILE ]]; then
 		echo -e "${RED}No source found in path for: $1.shs$RS"
-		exit
+		exit 1
 	fi
-	MOBASH_SOURCE_FILE_CUSTOM="$MOBASH_SOURCE_FILE.custom"
+	SOURCE_FILE_CUSTOM="$SOURCE_FILE.custom"
 
-	echo -e "${LGRN}$MOBASH_SOURCE_FILE$RS"
+	echo -e "${LGRN}$SOURCE_FILE$RS"
 
 	echo -e "${YEL}Finding includes...$RS"
-	unset MOBASH_INCLUDE_FILES
-	unset MOBASH_INCLUDE_ABSOLUTE_FILES
-	MOBASH_INCLUDE_FILES[0]="$1.shs"
-	MOBASH_INCLUDE_ABSOLUTE_FILES[0]="$MOBASH_SOURCE_FILE"
-	for mobash_include_file in `grep "^#@include" "$MOBASH_SOURCE_FILE" | awk '{ print $2 }'`
+	dict_init INCLUDE_FILES
+
+	dict_set INCLUDE_FILES "$1.shs" "$SOURCE_FILE"
+
+	local include_file include_absolute_file
+
+	unset IFS
+	for include_file in $(grep "^#@include" "$SOURCE_FILE" | awk '{ print $2 }')
 	do
-		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_file: " $CYN
-		mobash_include_absolute_file=`resolve_file_in_path "$mobash_include_file" "$MOBASH_INCLUDE_PATH" ":"`
-		if [[ "$mobash_include_absolute_file" ]]; then
-			MOBASH_INCLUDE_ABSOLUTE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_absolute_file"
-			MOBASH_INCLUDE_FILES[${#MOBASH_INCLUDE_FILES[@]}]="$mobash_include_file"
-			echo -e "${LGRN}$mobash_include_absolute_file$RS"
+		print_ln "%-${FORMAT_WIDTH}s" "  $include_file: " $CYN
+		include_absolute_file=$(resolve_file_in_path "$include_file" "$INCLUDE_PATH" ":")
+		if [[ $include_absolute_file ]]; then
+			dict_set INCLUDE_FILES "$include_file" "$include_absolute_file"
+
+			echo -e "${LGRN}$include_absolute_file$RS"
 		else
-			echo -e "${RED}No source file in path for: $mobash_include_file$RS"
+			echo
+			dict_dump INCLUDE_FILES
+			echo -e "\n${RED}No source file in path for: $include_file$RS"
 			mobash_cleanup
 		fi
 	done
 
 	# Config
-	MOBASH_CONFIG_FILE=`cat $MOBASH_SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }'`
-	if [[ $MOBASH_CONFIG_FILE ]]; then
+	CONFIG_FILE=$(cat $SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }')
+	if [[ $CONFIG_FILE ]]; then
 		echo
 		print_ln "%-${FORMAT_WIDTH}s" "Resolving config " $YEL
-		mobash_temp_config_file=`resolve_file_in_path "$MOBASH_CONFIG_FILE" "$MOBASH_CONFIG_PATH" ":"`
+		local temp_config_file=$(resolve_file_in_path "$CONFIG_FILE" "$CONFIG_PATH" ":")
 
-		if [[ $mobash_temp_config_file ]]; then
-			MOBASH_CONFIG_FILE="$mobash_temp_config_file"
-			echo -e "${LGRN}$mobash_temp_config_file$RS"
+		if [[ $temp_config_file ]]; then
+			CONFIG_FILE="$temp_config_file"
+			echo -e "${LGRN}$temp_config_file$RS"
 		else
-			echo -e "${RED}No config found in path for: $mobash_temp_config_file$RS"
-			exit
+			echo -e "${RED}No config found in path for: $temp_config_file$RS"
+			exit 1
 		fi
 	fi
 
 	# Output
 	print_ln "%-${FORMAT_WIDTH}s" "Resolving output " $YEL
-	MOBASH_BIN="`resolve_dir $MOBASH_BIN_DIR`/$1$MOBASH_BIN_EXTENSION"
-	MOBASH_BIN_NEW="$MOBASH_BIN.new"
-	echo -e "${LGRN}$MOBASH_BIN$RS"
+	BIN="$(resolve_dir $BIN_DIR)/$1$BIN_EXTENSION"
+	BIN_NEW="$BIN.new"
+	echo -e "${LGRN}$BIN$RS"
 
 }
 
@@ -270,16 +284,19 @@ mobash_get_custom_contents() {
 
 	echo -e "\n${YEL}Collecting custom...$RS"
 
-	echo "mo_main() {" > $MOBASH_SOURCE_FILE_CUSTOM
-		for (( mobash_include_i=${#MOBASH_INCLUDE_ABSOLUTE_FILES[@]}-1 ; mobash_include_i>=0 ; mobash_include_i-- )) ; do
-		mobash_include_f=${MOBASH_INCLUDE_ABSOLUTE_FILES[mobash_include_i]}
-		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_include_f: " $CYN
-		cat $mobash_include_f >> $MOBASH_SOURCE_FILE_CUSTOM
-		echo >> $MOBASH_SOURCE_FILE_CUSTOM
+	echo "mo_main() {" > $SOURCE_FILE_CUSTOM
+
+	local i f
+	for (( i=${#INCLUDE_ABSOLUTE_FILES[@]}-1 ; i>=0 ; i-- )) ; do
+
+		f=${INCLUDE_ABSOLUTE_FILES[$i]}
+		print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN
+		cat "$f" >> $SOURCE_FILE_CUSTOM
+		echo >> $SOURCE_FILE_CUSTOM
 		echo -e "${GRN}Complete$RS"
 	done
 
-	echo "}" >> $MOBASH_SOURCE_FILE_CUSTOM
+	echo "}" >> $SOURCE_FILE_CUSTOM
 
 	print_ln "%-${FORMAT_WIDTH}s" "Writing custom " $YEL
 	echo -n -e "$RED"
@@ -289,15 +306,14 @@ mobash_get_custom_contents() {
 		echo -e -n "$RS"
 		echo
 		mobash_cleanup
-
 	fi
 
 }
 
 mobash_apply_custom_contents() {
 	(
-		if source $MOBASH_SOURCE_FILE_CUSTOM; then
-			declare -f mo_main >> $MOBASH_BIN_NEW
+		if source $SOURCE_FILE_CUSTOM; then
+			declare -f mo_main >> $BIN_NEW
 		else
 			return 1
 		fi
@@ -306,16 +322,16 @@ mobash_apply_custom_contents() {
 
 
 mobash_init_bin() {
-	echo "#!/bin/bash" > $MOBASH_BIN_NEW
-	echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $MOBASH_BIN_NEW
+	echo "#!/bin/bash" > $BIN_NEW
+	echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $BIN_NEW
 
-	if [[ $MOBASH_CONFIG_FILE ]]; then
-		cat "$MOBASH_CONFIG_FILE" >> $MOBASH_BIN_NEW
+	if [[ $CONFIG_FILE ]]; then
+		cat "$CONFIG_FILE" >> $BIN_NEW
 	fi
 
-	echo -e "\n################################################################################" >> $MOBASH_BIN_NEW
-	echo "# GENERATED CODE" >> $MOBASH_BIN_NEW
-	echo "################################################################################" >> $MOBASH_BIN_NEW
+	echo -e "\n################################################################################" >> $BIN_NEW
+	echo "# GENERATED CODE" >> $BIN_NEW
+	echo "################################################################################" >> $BIN_NEW
 
 }
 
