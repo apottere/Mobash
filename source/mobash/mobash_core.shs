@@ -10,6 +10,7 @@
 #@import arrays.set
 #@import arrays.index_of
 #@import arrays.dump
+#@import arrays.contains
 
 #@import dict.init
 #@import dict.dump
@@ -17,6 +18,7 @@
 #@import dict.get_index_array
 #@import dict.get_keys
 #@import dict.get
+#@import dict.contains_key
 
 #@import error.do
 #@import error.file
@@ -83,52 +85,59 @@ mobash_resolve_imports() {
 		done
 	done
 
-	dict_dump MOBASH_IMPORTS
+#	dict_dump MOBASH_IMPORTS
 
-	declare -a mobash_imports_searched
-	unset MOBASH_IMPORT_FILES
-	mobash_imports_needed="true"
-	while [[ $mobash_imports_needed ]]; do
-		mobash_imports_needed=""
+	local imports_searched imports_searched_i; dict_init imports_searched
+	dict_init IMPORT_FILES
+
+	local imports_needed="true"
+	while [[ $imports_needed ]]; do
+		imports_needed=""
 
 		# for all imports in array
-		for MOBASH_IMPORTS_N in "${!MOBASH_IMPORTS_I[@]}"; do
-			mobash_import="${MOBASH_IMPORTS_I[$MOBASH_IMPORTS_N]}"
+		local import; unset IFS
+		for import in $(dict_get_keys MOBASH_IMPORTS); do
 
 			# only do unsearched imports
-			if [[ ! "${mobash_imports_searched[$MOBASH_IMPORTS_N]}" ]]; then
-				mobash_imports_searched[$MOBASH_IMPORTS_N]="true"
-				print_ln "%-${FORMAT_WIDTH}s" "  $mobash_import: " $CYN
-				mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`
+			if ! arrays_contains imports_searched $import; then
 
+				dict_set imports_searched $import "true"
+
+				print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN
+				local module=${import%%\.*}
+
+				local module_file
 				# if no file in map, find the file for that function.
-				if [[ ! $(mobash_get_file_map_index $mobash_module) ]]; then
-					mobash_module_file=$(resolve_file_in_path "$mobash_module.shm" "$IMPORT_PATH" ":")
-					if [[ ! $mobash_module_file ]]; then
-						echo -e "${RED}No file found in path for: $mobash_module$RS"
+				if [[ ! $(dict_contains_key IMPORT_FILES $module) ]]; then
+
+					module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")"
+
+					if [[ ! $module_file ]]; then
+						echo -e "${RED}No file found in path for: $module$RS"
 						mobash_cleanup
 					fi
-					MOBASH_IMPORT_FILES_I[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module"
-					MOBASH_IMPORT_FILES[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module_file"
+
+					dict_set IMPORT_FILES "$module" "$module_file"
+				else
+					module_file="$(dict_get IMPORT_FILES "$module")"
 				fi
-				echo -e "${LGRN}${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_module`]}$RS"
+
+				echo -e "${LGRN}$module_file$RS"
 
 
 				# get imports for specific function from it's module file
-				mobash_function_imports=`grep "^#@function $mobash_import:" "${MOBASH_IMPORT_FILES[$mobash_module]}" | awk -F': ' '{print $2}'`
+				local function_imports=$(grep "^#@function $import:" "$module_file" | cut -d':' -f 2 | sed 's/^ *//')
 
 				# if there are imports, add add them to the array if they're new
-				if [[ $mobash_function_imports ]]; then
+				if [[ $function_imports ]]; then
 
-					BIFS="$IFS"
-					IFS=' '
-					for mobash_function_import in $mobash_function_imports; do
+					local function_import; unset IFS
+					for function_import in $function_imports; do
 
-						if mobash_insert_import "$mobash_function_import" "${MOBASH_IMPORTS[$MOBASH_IMPORTS_N]}->$mobash_module"; then
-							mobash_imports_needed="true"
+						if mobash_insert_import "$function_import" "$(basename "$(dict_get MOBASH_IMPORTS $import)")->$module"; then
+							imports_needed="true"
 						fi
 					done
-					IFS="$BIFS"
 				fi
 			fi
 
@@ -151,19 +160,6 @@ mobash_insert_import() {
 			return 0
 		fi
 	fi
-}
-
-mobash_get_file_map_index() {
-	for mobash_file_map_index in "${!MOBASH_IMPORT_FILES_I[@]}"
-	do
-		if [[ "${MOBASH_IMPORT_FILES_I[$mobash_file_map_index]}" == "$1" ]]; then
-#			echo "found: "$mobash_file_map_index 1>&2
-			echo $mobash_file_map_index
-			return
-#		else
-#			echo "${MOBASH_IMPORT_FILES_I[$mobash_file_map_index]} is not $1" 1>&2
-		fi
-	done
 }
 
 mobash_transfer_import_contents() {

@@ -144,40 +144,42 @@ mo_main ()
                 mobash_insert_import "$import" "$absolute";
             done;
         done;
-        dict_dump MOBASH_IMPORTS;
-        declare -a mobash_imports_searched;
-        unset MOBASH_IMPORT_FILES;
-        mobash_imports_needed="true";
-        while [[ -n $mobash_imports_needed ]]; do
-            mobash_imports_needed="";
-            for MOBASH_IMPORTS_N in "${!MOBASH_IMPORTS_I[@]}";
+        local imports_searched imports_searched_i;
+        dict_init imports_searched;
+        dict_init IMPORT_FILES;
+        local imports_needed="true";
+        while [[ -n $imports_needed ]]; do
+            imports_needed="";
+            local import;
+            unset IFS;
+            for import in $(dict_get_keys MOBASH_IMPORTS);
             do
-                mobash_import="${MOBASH_IMPORTS_I[$MOBASH_IMPORTS_N]}";
-                if [[ ! -n "${mobash_imports_searched[$MOBASH_IMPORTS_N]}" ]]; then
-                    mobash_imports_searched[$MOBASH_IMPORTS_N]="true";
-                    print_ln "%-${FORMAT_WIDTH}s" "  $mobash_import: " $CYN;
-                    mobash_module=`echo -n "$mobash_import" | sed 's/\..*//'`;
-                    if [[ ! -n $(mobash_get_file_map_index $mobash_module) ]]; then
-                        mobash_module_file=$(resolve_file_in_path "$mobash_module.shm" "$IMPORT_PATH" ":");
-                        if [[ ! -n $mobash_module_file ]]; then
-                            echo -e "${RED}No file found in path for: $mobash_module$RS";
+                if ! arrays_contains imports_searched $import; then
+                    dict_set imports_searched $import "true";
+                    print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN;
+                    local module=${import%%\.*};
+                    local module_file;
+                    if [[ ! -n $(dict_contains_key IMPORT_FILES $module) ]]; then
+                        module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")";
+                        if [[ ! -n $module_file ]]; then
+                            echo -e "${RED}No file found in path for: $module$RS";
                             mobash_cleanup;
                         fi;
-                        MOBASH_IMPORT_FILES_I[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module";
-                        MOBASH_IMPORT_FILES[${#MOBASH_IMPORT_FILES[@]}]="$mobash_module_file";
+                        dict_set IMPORT_FILES "$module" "$module_file";
+                    else
+                        module_file="$(dict_get IMPORT_FILES "$module")";
                     fi;
-                    echo -e "${LGRN}${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_module`]}$RS";
-                    mobash_function_imports=`grep "^#@function $mobash_import:" "${MOBASH_IMPORT_FILES[$mobash_module]}" | awk -F': ' '{print $2}'`;
-                    if [[ -n $mobash_function_imports ]]; then
-                        BIFS="$IFS";
-                        IFS=' ';
-                        for mobash_function_import in $mobash_function_imports;
+                    echo -e "${LGRN}$module_file$RS";
+                    local function_imports=$(grep "^#@function $import:" "$module_file" | cut -d':' -f 2 | sed 's/^ *//');
+                    if [[ -n $function_imports ]]; then
+                        local function_import;
+                        unset IFS;
+                        for function_import in $function_imports;
                         do
-                            if mobash_insert_import "$mobash_function_import" "${MOBASH_IMPORTS[$MOBASH_IMPORTS_N]}->$mobash_module"; then
-                                mobash_imports_needed="true";
+                            if mobash_insert_import "$function_import" "$(basename "$(dict_get MOBASH_IMPORTS $import)")->$module"; then
+                                imports_needed="true";
                             fi;
                         done;
-                        IFS="$BIFS";
                     fi;
                 fi;
             done;
@@ -197,16 +199,6 @@ mo_main ()
                 return 0;
             fi;
         fi
-    };
-    function mobash_get_file_map_index () 
-    { 
-        for mobash_file_map_index in "${!MOBASH_IMPORT_FILES_I[@]}";
-        do
-            if [[ "${MOBASH_IMPORT_FILES_I[$mobash_file_map_index]}" == "$1" ]]; then
-                echo $mobash_file_map_index;
-                return;
-            fi;
-        done
     };
     function mobash_transfer_import_contents () 
     { 
@@ -405,6 +397,7 @@ EOT
     local SOURCE_FILE;
     local SOURCE_FILE_CUSTOM;
     local INCLUDE_FILES INCLUDE_FILES_i;
+    local IMPORT_FILES IMPORT_FILES_i;
     local MOBASH_IMPORTS MOBASH_IMPORTS_i;
     local BIN_DIR;
     local IMPORT_PATH;
@@ -418,6 +411,17 @@ EOT
     mobash_get_custom_contents;
     mobash_transfer_import_contents;
     mobash_finalize
+}
+arrays_contains () 
+{ 
+    local arrays_i;
+    for arrays_i in $(arrays_get $1 @);
+    do
+        if [[ $arrays_i == $2 ]]; then
+            return 0;
+        fi;
+    done;
+    return 1
 }
 arrays_dump () 
 { 
@@ -464,6 +468,10 @@ arrays_set ()
 { 
     read -r "$1[$2]" <<< "$3"
 }
+dict_contains_key () 
+{ 
+    arrays_contains $(dict_get_index_array $1) "$2"
+}
 dict_dump () 
 { 
     local dict_di="$(dict_get_index_array $1)";
@@ -472,7 +480,8 @@ dict_dump ()
     echo "Dump of dict '$1':";
     for dict_i in $(arrays_get_indicies $1);
     do
-        echo -e "Key: '$(arrays_get $dict_di $dict_i)'\t\tValue: '$(arrays_get $1 $dict_i)'";
+        print_ln "%-50s" "Key: '$(arrays_get $dict_di $dict_i)'";
+        echo -e "Value: '$(arrays_get $1 $dict_i)'";
     done
 }
 dict_get () 
