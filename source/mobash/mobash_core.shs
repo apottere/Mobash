@@ -158,7 +158,7 @@ mobash_transfer_import_contents() {
 	local function_names
 
 	unset IFS
-	for import in $(sort <<< $(dict_get_keys MOBASH_IMPORTS)); do
+	for import in $(tr ' ' '\n' <<< "$(dict_get_keys MOBASH_IMPORTS)" | sort); do
 
 		local module=(${import%%\.*})
 

@@ -152,7 +152,7 @@ mo_main ()
         local current_module='';
         local function_names;
         unset IFS;
-        for import in $(sort <<< $(dict_get_keys MOBASH_IMPORTS));
+        for import in $(tr ' ' '\n' <<< "$(dict_get_keys MOBASH_IMPORTS)" | sort);
         do
             local module=(${import%%\.*});
             if [[ $module != $current_module ]]; then
@@ -409,13 +409,55 @@ EOT
     mobash_transfer_import_contents;
     mobash_finalize
 }
+arrays_contains () 
+{ 
+    local arrays_i;
+    for arrays_i in $(arrays_get $1 @);
+    do
+        if [[ $arrays_i == $2 ]]; then
+            return 0;
+        fi;
+    done;
+    return 1
+}
+arrays_get () 
+{ 
+    local array="$1[${2:?$(error_do 'Array index required.')}]";
+    echo "${!array}"
+}
+arrays_get_indicies () 
+{ 
+    unset IFS;
+    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
+}
+arrays_index_of () 
+{ 
+    local i;
+    unset IFS;
+    for i in $(arrays_get_indicies $1);
+    do
+        local elem="$(arrays_get $1 $i)";
+        if [[ $elem == $2 ]]; then
+            echo "$i";
+            return 0;
+        fi;
+    done
+}
 arrays_init () 
 { 
     read -a "${1:?$(error 'Array name is required.')}" <<< ''
 }
+arrays_len () 
+{ 
+    eval 'echo ${#'"$1"'[@]}'
+}
 arrays_push () 
 { 
     arrays_set $1 $(arrays_len $1) "$2"
+}
+arrays_set () 
+{ 
+    read -r "$1[$2]" <<< "$3"
 }
 dict_contains_key () 
 { 
@@ -427,6 +469,12 @@ dict_get ()
     if [[ -n $dict_i ]]; then
         echo "$(arrays_get $1 $dict_i)";
     fi
+}
+dict_get_index_array () 
+{ 
+    local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
+    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
+    echo $dict_i
 }
 dict_get_keys () 
 { 
@@ -455,97 +503,6 @@ error_do ()
     echo "($(error_file)) $(error_format $depth "${1:-error}")";
     error_exit
 }
-print_ln () 
-{ 
-    [[ -n $3 ]] && echo -n -e "$3";
-    printf "$1" "$(echo -n -e "$2")";
-    [[ -n $3 ]] && echo -n -e '\033[0;0m'
-}
-resolve_dir () 
-{ 
-    local p="${1/#~/$HOME}";
-    if [[ -f $p ]]; then
-        resolve_dir $(dirname "$p");
-    else
-        if [[ -d $p ]]; then
-            ( builtin cd "$p" >&/dev/null && pwd "$2" );
-        fi;
-    fi
-}
-resolve_file_in_path () 
-{ 
-    local d;
-    local f;
-    IFS="$3";
-    for d in $2;
-    do
-        if [[ -n $d ]]; then
-            d=$(resolve_dir $d);
-            f=$(find $d -type f -name "$1" 2>/dev/null | head -1);
-            if [[ -n $f ]]; then
-                break;
-            fi;
-        fi;
-    done;
-    echo -n "$f"
-}
-resolve_expanded_path () 
-{ 
-    local current_dir="$(resolve_dir ${1:-.})";
-    local expanded_dirs=("$current_dir");
-    local d;
-    while [[ $current_dir != '/' ]]; do
-        current_dir="$(dirname $current_dir)";
-        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
-    done;
-    for d in "${expanded_dirs[@]}";
-    do
-        echo "$d";
-    done
-}
-arrays_len () 
-{ 
-    eval 'echo ${#'"$1"'[@]}'
-}
-arrays_set () 
-{ 
-    read -r "$1[$2]" <<< "$3"
-}
-arrays_contains () 
-{ 
-    local arrays_i;
-    for arrays_i in $(arrays_get $1 @);
-    do
-        if [[ $arrays_i == $2 ]]; then
-            return 0;
-        fi;
-    done;
-    return 1
-}
-dict_get_index_array () 
-{ 
-    local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
-    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
-    echo $dict_i
-}
-arrays_get () 
-{ 
-    local array="$1[${2:?$(error_do 'Array index required.')}]";
-    echo "${!array}"
-}
-arrays_index_of () 
-{ 
-    local i;
-    unset IFS;
-    for i in $(arrays_get_indicies $1);
-    do
-        local elem="$(arrays_get $1 $i)";
-        if [[ $elem == $2 ]]; then
-            echo "$i";
-            return 0;
-        fi;
-    done
-}
 error_exit () 
 { 
     if [[ $- != *i* ]]; then
@@ -572,9 +529,52 @@ error_format ()
         echo "$prefix";
     fi
 }
-arrays_get_indicies () 
+print_ln () 
 { 
-    unset IFS;
-    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
+    [[ -n $3 ]] && echo -n -e "$3";
+    printf "$1" "$(echo -n -e "$2")";
+    [[ -n $3 ]] && echo -n -e '\033[0;0m'
+}
+resolve_dir () 
+{ 
+    local p="${1/#~/$HOME}";
+    if [[ -f $p ]]; then
+        resolve_dir $(dirname "$p");
+    else
+        if [[ -d $p ]]; then
+            ( builtin cd "$p" >&/dev/null && pwd "$2" );
+        fi;
+    fi
+}
+resolve_expanded_path () 
+{ 
+    local current_dir="$(resolve_dir ${1:-.})";
+    local expanded_dirs=("$current_dir");
+    local d;
+    while [[ $current_dir != '/' ]]; do
+        current_dir="$(dirname $current_dir)";
+        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
+    done;
+    for d in "${expanded_dirs[@]}";
+    do
+        echo "$d";
+    done
+}
+resolve_file_in_path () 
+{ 
+    local d;
+    local f;
+    IFS="$3";
+    for d in $2;
+    do
+        if [[ -n $d ]]; then
+            d=$(resolve_dir $d);
+            f=$(find $d -type f -name "$1" 2>/dev/null | head -1);
+            if [[ -n $f ]]; then
+                break;
+            fi;
+        fi;
+    done;
+    echo -n "$f"
 }
 mo_main "$@"
