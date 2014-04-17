@@ -103,7 +103,7 @@ mo_main ()
                 if ! dict_contains_key imports_searched $import; then
                     dict_set imports_searched $import "true";
                     print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN;
-                    local module=${import%%\.*};
+                    local module=$(mobash_get_import_module $import);
                     local module_file;
                     if [[ ! -n $(dict_contains_key IMPORT_FILES $module) ]]; then
                         module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")";
@@ -154,7 +154,7 @@ mo_main ()
         unset IFS;
         for import in $(tr ' ' '\n' <<< "$(dict_get_keys MOBASH_IMPORTS)" | sort);
         do
-            local module=(${import%%\.*});
+            local module=$(mobash_get_import_module $import);
             if [[ $module != $current_module ]]; then
                 if ! mobash_transfer_queued_contents; then
                     mobash_cleanup;
@@ -162,7 +162,7 @@ mo_main ()
                 current_module="$module";
                 arrays_init function_names;
             fi;
-            arrays_push function_names "${import#*\.}";
+            arrays_push function_names "$(mobash_get_import_function $import)";
         done;
         if ! mobash_transfer_queued_contents; then
             mobash_cleanup;
@@ -181,12 +181,40 @@ mo_main ()
                 for function_name in "${function_names[@]}";
                 do
                     print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT;
-                    declare -f "${current_module}_$function_name" >> $BIN_NEW;
-                    echo -e "${GRN}Complete$RS";
+                    local function_def="$(declare -f "$(mobash_get_function_name "$current_module" "$function_name")")";
+                    if [[ -n $function_def ]]; then
+                        echo "$function_def" >> $BIN_NEW;
+                        echo -e "${GRN}Complete$RS";
+                    else
+                        echo -e "${RED}Not found in module file.";
+                        return 1;
+                    fi;
                 done;
             else
                 return 1;
             fi );
+        fi
+    };
+    function mobash_get_import_module () 
+    { 
+        echo "${1%%\.*}"
+    };
+    function mobash_get_import_function () 
+    { 
+        local function;
+        if [[ $1 =~ .*\..* ]]; then
+            function="${1#*\.}";
+        else
+            function=$(mobash_get_import_module $1);
+        fi;
+        echo "$function"
+    };
+    function mobash_get_function_name () 
+    { 
+        if [[ $1 == $2 ]]; then
+            echo "$1";
+        else
+            echo "${1}_$2";
         fi
     };
     function mobash_get_filenames () 
@@ -496,6 +524,12 @@ dict_set ()
     : ${dict_i:=$(arrays_len $dict_di)};
     arrays_set $dict_di $dict_i "$2";
     arrays_set $1 $dict_i "$3"
+}
+error () 
+{ 
+    local depth=${2:-0};
+    echo "($(error_file)) $(error_format $depth "${1:-error}")";
+    error_exit
 }
 error_do () 
 { 

@@ -103,7 +103,7 @@ mo_main ()
                 if ! dict_contains_key imports_searched $import; then
                     dict_set imports_searched $import "true";
                     print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN;
-                    local module=${import%%\.*};
+                    local module=$(mobash_get_import_module $import);
                     local module_file;
                     if [[ ! -n $(dict_contains_key IMPORT_FILES $module) ]]; then
                         module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")";
@@ -152,9 +152,9 @@ mo_main ()
         local current_module='';
         local function_names;
         unset IFS;
-        for import in $(sort <<< $(dict_get_keys MOBASH_IMPORTS));
+        for import in $(tr ' ' '\n' <<< "$(dict_get_keys MOBASH_IMPORTS)" | sort);
         do
-            local module=(${import%%\.*});
+            local module=$(mobash_get_import_module $import);
             if [[ $module != $current_module ]]; then
                 if ! mobash_transfer_queued_contents; then
                     mobash_cleanup;
@@ -162,7 +162,7 @@ mo_main ()
                 current_module="$module";
                 arrays_init function_names;
             fi;
-            arrays_push function_names "${import#*\.}";
+            arrays_push function_names "$(mobash_get_import_function $import)";
         done;
         if ! mobash_transfer_queued_contents; then
             mobash_cleanup;
@@ -181,12 +181,40 @@ mo_main ()
                 for function_name in "${function_names[@]}";
                 do
                     print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT;
-                    declare -f "${current_module}_$function_name" >> $BIN_NEW;
-                    echo -e "${GRN}Complete$RS";
+                    local function_def="$(declare -f "$(mobash_get_function_name "$current_module" "$function_name")")";
+                    if [[ -n $function_def ]]; then
+                        echo "$function_def" >> $BIN_NEW;
+                        echo -e "${GRN}Complete$RS";
+                    else
+                        echo -e "${RED}Not found in module file.";
+                        return 1;
+                    fi;
                 done;
             else
                 return 1;
             fi );
+        fi
+    };
+    function mobash_get_import_module () 
+    { 
+        echo "${1%%\.*}"
+    };
+    function mobash_get_import_function () 
+    { 
+        local function;
+        if [[ $1 =~ .*\..* ]]; then
+            function="${1#*\.}";
+        else
+            function=$(mobash_get_import_module $1);
+        fi;
+        echo "$function"
+    };
+    function mobash_get_function_name () 
+    { 
+        if [[ $1 == $2 ]]; then
+            echo "$1";
+        else
+            echo "${1}_$2";
         fi
     };
     function mobash_get_filenames () 
@@ -420,15 +448,15 @@ arrays_contains ()
     done;
     return 1
 }
-arrays_dump () 
+arrays_get () 
 { 
-    echo "Dump of array '$1':";
-    local i;
+    local array="$1[${2:?$(error_do 'Array index required.')}]";
+    echo "${!array}"
+}
+arrays_get_indicies () 
+{ 
     unset IFS;
-    for i in $(arrays_get_indicies $1);
-    do
-        echo -e "Key: '$i'\t\tValue: '$(arrays_get $1 $i)'";
-    done
+    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
 }
 arrays_index_of () 
 { 
@@ -463,18 +491,6 @@ dict_contains_key ()
 { 
     arrays_contains $(dict_get_index_array $1) "$2"
 }
-dict_dump () 
-{ 
-    local dict_di="$(dict_get_index_array $1)";
-    local dict_i;
-    unset IFS;
-    echo "Dump of dict '$1':";
-    for dict_i in $(arrays_get_indicies $1);
-    do
-        print_ln "%-50s" "Key: '$(arrays_get $dict_di $dict_i)'";
-        echo -e "Value: '$(arrays_get $1 $dict_i)'";
-    done
-}
 dict_get () 
 { 
     local dict_i=$(arrays_index_of "$(dict_get_index_array $1)" "${2:?$(error 'Key is required.')}");
@@ -508,6 +524,12 @@ dict_set ()
     : ${dict_i:=$(arrays_len $dict_di)};
     arrays_set $dict_di $dict_i "$2";
     arrays_set $1 $dict_i "$3"
+}
+error () 
+{ 
+    local depth=${2:-0};
+    echo "($(error_file)) $(error_format $depth "${1:-error}")";
+    error_exit
 }
 error_do () 
 { 
@@ -558,6 +580,20 @@ resolve_dir ()
         fi;
     fi
 }
+resolve_expanded_path () 
+{ 
+    local current_dir="$(resolve_dir ${1:-.})";
+    local expanded_dirs=("$current_dir");
+    local d;
+    while [[ $current_dir != '/' ]]; do
+        current_dir="$(dirname $current_dir)";
+        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
+    done;
+    for d in "${expanded_dirs[@]}";
+    do
+        echo "$d";
+    done
+}
 resolve_file_in_path () 
 { 
     local d;
@@ -574,29 +610,5 @@ resolve_file_in_path ()
         fi;
     done;
     echo -n "$f"
-}
-resolve_expanded_path () 
-{ 
-    local current_dir="$(resolve_dir ${1:-.})";
-    local expanded_dirs=("$current_dir");
-    local d;
-    while [[ $current_dir != '/' ]]; do
-        current_dir="$(dirname $current_dir)";
-        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
-    done;
-    for d in "${expanded_dirs[@]}";
-    do
-        echo "$d";
-    done
-}
-arrays_get () 
-{ 
-    local array="$1[${2:?$(error_do 'Array index required.')}]";
-    echo "${!array}"
-}
-arrays_get_indicies () 
-{ 
-    unset IFS;
-    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
 }
 mo_main "$@"

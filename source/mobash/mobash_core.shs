@@ -15,8 +15,6 @@
 #@import dict.get
 #@import dict.contains_key
 
-#@import error.do
-
 mobash_finalize() {
 
 	echo
@@ -95,7 +93,7 @@ mobash_resolve_imports() {
 				dict_set imports_searched $import "true"
 
 				print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN
-				local module=${import%%\.*}
+				local module=$(mobash_get_import_module $import)
 
 				local module_file
 				# if no file in map, find the file for that function.
@@ -160,7 +158,7 @@ mobash_transfer_import_contents() {
 	unset IFS
 	for import in $(tr ' ' '\n' <<< "$(dict_get_keys MOBASH_IMPORTS)" | sort); do
 
-		local module=(${import%%\.*})
+		local module=$(mobash_get_import_module $import)
 
 		# Add items to the array until module name changes, then transfer functions.
 		if [[ $module != $current_module ]]; then
@@ -173,7 +171,7 @@ mobash_transfer_import_contents() {
 			arrays_init function_names
 		fi
 
-		arrays_push function_names "${import#*\.}"
+		arrays_push function_names "$(mobash_get_import_function $import)"
 	done
 
 	if ! mobash_transfer_queued_contents; then
@@ -194,13 +192,44 @@ mobash_transfer_queued_contents() {
 			for function_name in "${function_names[@]}";
 			do 
 				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT
-				declare -f "${current_module}_$function_name" >> $BIN_NEW
-				echo -e "${GRN}Complete$RS"
+
+				local function_def="$(declare -f "$(mobash_get_function_name "$current_module" "$function_name")")"
+				if [[ $function_def ]]; then
+					echo "$function_def" >> $BIN_NEW
+					echo -e "${GRN}Complete$RS"
+				else
+					echo -e "${RED}Not found in module file."
+					return 1
+				fi
 			done
 		else
 			return 1
 		fi
 		)
+	fi
+}
+
+mobash_get_import_module() {
+	echo "${1%%\.*}"
+}
+
+mobash_get_import_function() {
+	local function
+
+	if [[ $1 =~ .*\..* ]]; then
+		function="${1#*\.}"
+	else
+		function=$(mobash_get_import_module $1)
+	fi
+
+	echo "$function"
+}
+
+mobash_get_function_name() {
+	if [[ $1 == $2 ]]; then
+		echo "$1"
+	else
+		echo "${1}_$2"
 	fi
 }
 
