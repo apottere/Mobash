@@ -6,24 +6,16 @@
 #@import resolve.file_in_path
 
 #@import arrays.init
-#@import arrays.len
-#@import arrays.set
-#@import arrays.index_of
-#@import arrays.dump
-#@import arrays.contains
+#@import arrays.push
 
 #@import dict.init
-#@import dict.dump
 #@import dict.set
-#@import dict.get_index_array
 #@import dict.get_keys
+#@import dict.get_values
 #@import dict.get
 #@import dict.contains_key
 
 #@import error.do
-#@import error.file
-#@import error.format
-#@import error.exit
 
 mobash_finalize() {
 
@@ -51,8 +43,8 @@ mobash_cleanup() {
 }
 
 mobash_resolve_function_for_file() {
-	file=$1
-	func=$2
+	local file="$1"
+	local func="$2"
 	print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT; echo -n -e "$RED"
 	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi'
 
@@ -75,17 +67,16 @@ mobash_resolve_imports() {
 	for include in $(dict_get_keys INCLUDE_FILES)
 	do
 		local absolute="$(dict_get INCLUDE_FILES $include)"
+		local filename="$(basename "$absolute")"
 		print_ln "%-${FORMAT_WIDTH}s" "  $include: " $CYN
 		echo -e "${LGRN}$absolute$RS"
 
 		local import; unset IFS
 		for import in $(grep "^#@import" "$absolute" | awk '{ print $2 }' | sort | uniq)
 		do
-			mobash_insert_import "$import" "$absolute"
+			mobash_insert_import "$import" "$filename"
 		done
 	done
-
-#	dict_dump MOBASH_IMPORTS
 
 	local imports_searched imports_searched_i; dict_init imports_searched
 	dict_init IMPORT_FILES
@@ -99,7 +90,7 @@ mobash_resolve_imports() {
 		for import in $(dict_get_keys MOBASH_IMPORTS); do
 
 			# only do unsearched imports
-			if ! arrays_contains imports_searched $import; then
+			if ! dict_contains_key imports_searched $import; then
 
 				dict_set imports_searched $import "true"
 
@@ -143,7 +134,6 @@ mobash_resolve_imports() {
 
 		done
 	done
-
 }
 
 mobash_insert_import() {
@@ -164,26 +154,27 @@ mobash_insert_import() {
 
 mobash_transfer_import_contents() {
 	echo -e "\n${YEL}Writing imports...$RS"
-	mobash_transfer_current=""
-	BIFS="$IFS"
-	IFS=$'\n'
-	for mobash_import_s in `sort <<< "${MOBASH_IMPORTS_I[*]}"`; do
-		IFS="$BIFS"
-		declare -a mobash_transfer_parts=(${mobash_import_s/./ })
+	local current_module=''
+	local function_names
 
-		if [[ ${mobash_transfer_parts[0]} != $mobash_transfer_current ]]; then
+	unset IFS
+	for import in $(sort <<< $(dict_get_keys MOBASH_IMPORTS)); do
+
+		local module=(${import%%\.*})
+
+		# Add items to the array until module name changes, then transfer functions.
+		if [[ $module != $current_module ]]; then
 			if ! mobash_transfer_queued_contents; then
 				mobash_cleanup
 			fi
 
-			mobash_transfer_current="${mobash_transfer_parts[0]}"
-			unset mobash_transfer_names; declare -a mobash_transfer_names
+			# Reset array and current module.
+			current_module="$module"
+			arrays_init function_names
 		fi
-#		echo "Adding '${mobash_transfer_parts[1]}' to array."
-		mobash_transfer_names[${#mobash_transfer_names[@]}]="${mobash_transfer_parts[1]}"
-		IFS=$'\n'
+
+		arrays_push function_names "${import#*\.}"
 	done
-	IFS="$BIFS"
 
 	if ! mobash_transfer_queued_contents; then
 		mobash_cleanup
@@ -191,17 +182,19 @@ mobash_transfer_import_contents() {
 }
 
 mobash_transfer_queued_contents() {
-	if [[ $mobash_transfer_current ]]; then
-		print_ln "%-${FORMAT_WIDTH}s" "  $mobash_transfer_current: " $CYN
+	if [[ $current_module ]]; then
+		print_ln "%-${FORMAT_WIDTH}s" "  $current_module: " $CYN
 		echo -n -e "$RED"
 		(
-		if source ${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]};
+		local file="$(dict_get IMPORT_FILES $current_module)"
+		if source "$file";
 		then
-			echo -e "$LGRN${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}"
-			for mobash_transfer_name in ${mobash_transfer_names[@]};
+			echo -e "$LGRN$file"
+			local function_name; unset IFS
+			for function_name in "${function_names[@]}";
 			do 
-				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $mobash_transfer_name: " $MGT
-				declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $BIN_NEW
+				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT
+				declare -f "${current_module}_$function_name" >> $BIN_NEW
 				echo -e "${GRN}Complete$RS"
 			done
 		else
@@ -231,8 +224,6 @@ mobash_get_filenames() {
 	echo -e "${YEL}Finding includes...$RS"
 	dict_init INCLUDE_FILES
 
-	dict_set INCLUDE_FILES "$1.shs" "$SOURCE_FILE"
-
 	local include_file include_absolute_file
 
 	unset IFS
@@ -251,6 +242,9 @@ mobash_get_filenames() {
 			mobash_cleanup
 		fi
 	done
+
+	# Add source file last so functions will always be declared before they're run.
+	dict_set INCLUDE_FILES "$1.shs" "$SOURCE_FILE"
 
 	# Config
 	CONFIG_FILE=$(cat $SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }')
@@ -282,10 +276,9 @@ mobash_get_custom_contents() {
 
 	echo "mo_main() {" > $SOURCE_FILE_CUSTOM
 
-	local i f
-	for (( i=${#INCLUDE_ABSOLUTE_FILES[@]}-1 ; i>=0 ; i-- )) ; do
+	local f
+	for f in $(dict_get_values INCLUDE_FILES); do
 
-		f=${INCLUDE_ABSOLUTE_FILES[$i]}
 		print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN
 		cat "$f" >> $SOURCE_FILE_CUSTOM
 		echo >> $SOURCE_FILE_CUSTOM
@@ -328,7 +321,6 @@ mobash_init_bin() {
 	echo -e "\n################################################################################" >> $BIN_NEW
 	echo "# GENERATED CODE" >> $BIN_NEW
 	echo "################################################################################" >> $BIN_NEW
-
 }
 
 mobash_usage() {

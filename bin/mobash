@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compiled with MoBash v1.1
+# Compiled with MoBash v2.0
 
 ################################################################################
 # INFO
@@ -7,7 +7,7 @@
 #
 # Name:		mobash
 # Author:	Andrew Potter apottere@gmail.com
-# Release:	1.1
+# Release:	2.0
 # Date:		
 #
 # A simplistic modular bash compiler
@@ -17,7 +17,7 @@
 # CONFIGS
 ################################################################################
 
-MOBASH_VERSION="1.1"
+MOBASH_VERSION="2.0"
 
 # These are default values that will get overriden by a .mobashrc file found in
 # any directory above where the mobash script resides.
@@ -32,6 +32,266 @@ MOBASH_BIN_DIR=""       # bin_dir
 ################################################################################
 mo_main () 
 { 
+    function mobash_finalize () 
+    { 
+        echo;
+        print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL;
+        echo 'mo_main "$@"' >> $BIN_NEW;
+        if [[ -n $PRESERVE_TEMP_FILES ]]; then
+            cp $BIN_NEW $BIN;
+        else
+            mv $BIN_NEW $BIN;
+        fi;
+        chmod 755 $BIN;
+        echo -e "$RS${GRN}Complete$RS";
+        mobash_cleanup
+    };
+    function mobash_cleanup () 
+    { 
+        print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL;
+        echo -e "$RS${GRN}Complete$RS";
+        if [[ -z $PRESERVE_TEMP_FILES ]]; then
+            rm $BIN_NEW >&/dev/null;
+            rm $SOURCE_FILE_CUSTOM >&/dev/null;
+        fi;
+        exit 0
+    };
+    function mobash_resolve_function_for_file () 
+    { 
+        local file="$1";
+        local func="$2";
+        print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT;
+        echo -n -e "$RED";
+        bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi';
+        if [[ $? == 1 ]]; then
+            echo -e "No valid function declaration found.$RS";
+            echo;
+            mobash_cleanup;
+        else
+            echo -e "$RS${GRN}Complete$RS";
+        fi
+    };
+    function mobash_resolve_imports () 
+    { 
+        echo -e "${YEL}Building dependency list...$RS";
+        dict_init MOBASH_IMPORTS;
+        local include;
+        unset IFS;
+        for include in $(dict_get_keys INCLUDE_FILES);
+        do
+            local absolute="$(dict_get INCLUDE_FILES $include)";
+            local filename="$(basename "$absolute")";
+            print_ln "%-${FORMAT_WIDTH}s" "  $include: " $CYN;
+            echo -e "${LGRN}$absolute$RS";
+            local import;
+            unset IFS;
+            for import in $(grep "^#@import" "$absolute" | awk '{ print $2 }' | sort | uniq);
+            do
+                mobash_insert_import "$import" "$filename";
+            done;
+        done;
+        local imports_searched imports_searched_i;
+        dict_init imports_searched;
+        dict_init IMPORT_FILES;
+        local imports_needed="true";
+        while [[ -n $imports_needed ]]; do
+            imports_needed="";
+            local import;
+            unset IFS;
+            for import in $(dict_get_keys MOBASH_IMPORTS);
+            do
+                if ! dict_contains_key imports_searched $import; then
+                    dict_set imports_searched $import "true";
+                    print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN;
+                    local module=${import%%\.*};
+                    local module_file;
+                    if [[ ! -n $(dict_contains_key IMPORT_FILES $module) ]]; then
+                        module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")";
+                        if [[ ! -n $module_file ]]; then
+                            echo -e "${RED}No file found in path for: $module$RS";
+                            mobash_cleanup;
+                        fi;
+                        dict_set IMPORT_FILES "$module" "$module_file";
+                    else
+                        module_file="$(dict_get IMPORT_FILES "$module")";
+                    fi;
+                    echo -e "${LGRN}$module_file$RS";
+                    local function_imports=$(grep "^#@function $import:" "$module_file" | cut -d':' -f 2 | sed 's/^ *//');
+                    if [[ -n $function_imports ]]; then
+                        local function_import;
+                        unset IFS;
+                        for function_import in $function_imports;
+                        do
+                            if mobash_insert_import "$function_import" "$(basename "$(dict_get MOBASH_IMPORTS $import)")->$module"; then
+                                imports_needed="true";
+                            fi;
+                        done;
+                    fi;
+                fi;
+            done;
+        done
+    };
+    function mobash_insert_import () 
+    { 
+        if [[ -n "$1" ]]; then
+            print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT;
+            local current="$(dict_get MOBASH_IMPORTS "$1")";
+            if [[ -n $current ]]; then
+                echo -e "${LYEL}$current$RS";
+                return 1;
+            else
+                echo -e "${GRN}New dependency$RS";
+                dict_set MOBASH_IMPORTS "$1" "$2";
+                return 0;
+            fi;
+        fi
+    };
+    function mobash_transfer_import_contents () 
+    { 
+        echo -e "\n${YEL}Writing imports...$RS";
+        local current_module='';
+        local function_names;
+        unset IFS;
+        for import in $(sort <<< $(dict_get_keys MOBASH_IMPORTS));
+        do
+            local module=(${import%%\.*});
+            if [[ $module != $current_module ]]; then
+                if ! mobash_transfer_queued_contents; then
+                    mobash_cleanup;
+                fi;
+                current_module="$module";
+                arrays_init function_names;
+            fi;
+            arrays_push function_names "${import#*\.}";
+        done;
+        if ! mobash_transfer_queued_contents; then
+            mobash_cleanup;
+        fi
+    };
+    function mobash_transfer_queued_contents () 
+    { 
+        if [[ -n $current_module ]]; then
+            print_ln "%-${FORMAT_WIDTH}s" "  $current_module: " $CYN;
+            echo -n -e "$RED";
+            ( local file="$(dict_get IMPORT_FILES $current_module)";
+            if source "$file"; then
+                echo -e "$LGRN$file";
+                local function_name;
+                unset IFS;
+                for function_name in "${function_names[@]}";
+                do
+                    print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT;
+                    declare -f "${current_module}_$function_name" >> $BIN_NEW;
+                    echo -e "${GRN}Complete$RS";
+                done;
+            else
+                return 1;
+            fi );
+        fi
+    };
+    function mobash_get_filenames () 
+    { 
+        print_ln "%-${FORMAT_WIDTH}s" "Resolving source " $YEL;
+        SOURCE_FILE=$(resolve_file_in_path "$1.shs" "$SOURCE_PATH" ":");
+        if [[ ! -n $SOURCE_FILE ]]; then
+            echo -e "${RED}No source found in path for: $1.shs$RS";
+            exit 1;
+        fi;
+        SOURCE_FILE_CUSTOM="$SOURCE_FILE.custom";
+        echo -e "${LGRN}$SOURCE_FILE$RS";
+        echo -e "${YEL}Finding includes...$RS";
+        dict_init INCLUDE_FILES;
+        local include_file include_absolute_file;
+        unset IFS;
+        for include_file in $(grep "^#@include" "$SOURCE_FILE" | awk '{ print $2 }');
+        do
+            print_ln "%-${FORMAT_WIDTH}s" "  $include_file: " $CYN;
+            include_absolute_file=$(resolve_file_in_path "$include_file" "$INCLUDE_PATH" ":");
+            if [[ -n $include_absolute_file ]]; then
+                dict_set INCLUDE_FILES "$include_file" "$include_absolute_file";
+                echo -e "${LGRN}$include_absolute_file$RS";
+            else
+                echo;
+                dict_dump INCLUDE_FILES;
+                echo -e "\n${RED}No source file in path for: $include_file$RS";
+                mobash_cleanup;
+            fi;
+        done;
+        dict_set INCLUDE_FILES "$1.shs" "$SOURCE_FILE";
+        CONFIG_FILE=$(cat $SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }');
+        if [[ -n $CONFIG_FILE ]]; then
+            echo;
+            print_ln "%-${FORMAT_WIDTH}s" "Resolving config " $YEL;
+            local temp_config_file=$(resolve_file_in_path "$CONFIG_FILE" "$CONFIG_PATH" ":");
+            if [[ -n $temp_config_file ]]; then
+                CONFIG_FILE="$temp_config_file";
+                echo -e "${LGRN}$temp_config_file$RS";
+            else
+                echo -e "${RED}No config found in path for: $temp_config_file$RS";
+                exit 1;
+            fi;
+        fi;
+        print_ln "%-${FORMAT_WIDTH}s" "Resolving output " $YEL;
+        BIN="$(resolve_dir $BIN_DIR)/$1$BIN_EXTENSION";
+        BIN_NEW="$BIN.new";
+        echo -e "${LGRN}$BIN$RS"
+    };
+    function mobash_get_custom_contents () 
+    { 
+        echo -e "\n${YEL}Collecting custom...$RS";
+        echo "mo_main() {" > $SOURCE_FILE_CUSTOM;
+        local f;
+        for f in $(dict_get_values INCLUDE_FILES);
+        do
+            print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN;
+            cat "$f" >> $SOURCE_FILE_CUSTOM;
+            echo >> $SOURCE_FILE_CUSTOM;
+            echo -e "${GRN}Complete$RS";
+        done;
+        echo "}" >> $SOURCE_FILE_CUSTOM;
+        print_ln "%-${FORMAT_WIDTH}s" "Writing custom " $YEL;
+        echo -n -e "$RED";
+        if mobash_apply_custom_contents; then
+            echo -e "$RS${GRN}Complete$RS";
+        else
+            echo -e -n "$RS";
+            echo;
+            mobash_cleanup;
+        fi
+    };
+    function mobash_apply_custom_contents () 
+    { 
+        ( if source $SOURCE_FILE_CUSTOM; then
+            declare -f mo_main >> $BIN_NEW;
+        else
+            return 1;
+        fi )
+    };
+    function mobash_init_bin () 
+    { 
+        echo "#!/bin/bash" > $BIN_NEW;
+        echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $BIN_NEW;
+        if [[ -n $CONFIG_FILE ]]; then
+            cat "$CONFIG_FILE" >> $BIN_NEW;
+        fi;
+        echo -e "\n################################################################################" >> $BIN_NEW;
+        echo "# GENERATED CODE" >> $BIN_NEW;
+        echo "################################################################################" >> $BIN_NEW
+    };
+    function mobash_usage () 
+    { 
+        cat  <<EOT
+
+usage: mobash [options] <binary>                    Compile <binary> from sources.
+   or: mobash [options] <binary> -r [args ..]       Compile <binary> and run it with [args ..]
+
+Arguments:
+   -sh                       Append .sh to the compiled binary
+   -p, --preserve            Leave .custom and .new files in place after exit
+
+EOT
+
+    }
     function mobash_config_read_file () 
     { 
         if [[ -f $1 && -r $1 ]]; then
@@ -87,269 +347,6 @@ mo_main ()
         echo -e "${GRN}$BIN_DIR";
         echo
     };
-    function mobash_finalize () 
-    { 
-        echo;
-        print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL;
-        echo 'mo_main "$@"' >> $BIN_NEW;
-        if [[ -n $PRESERVE_TEMP_FILES ]]; then
-            cp $BIN_NEW $BIN;
-        else
-            mv $BIN_NEW $BIN;
-        fi;
-        chmod 755 $BIN;
-        echo -e "$RS${GRN}Complete$RS";
-        mobash_cleanup
-    };
-    function mobash_cleanup () 
-    { 
-        print_ln "%-${FORMAT_WIDTH}s" "Cleaning up files " $YEL;
-        echo -e "$RS${GRN}Complete$RS";
-        if [[ -z $PRESERVE_TEMP_FILES ]]; then
-            rm $BIN_NEW >&/dev/null;
-            rm $SOURCE_FILE_CUSTOM >&/dev/null;
-        fi;
-        exit 0
-    };
-    function mobash_resolve_function_for_file () 
-    { 
-        file=$1;
-        func=$2;
-        print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT;
-        echo -n -e "$RED";
-        bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi';
-        if [[ $? == 1 ]]; then
-            echo -e "No valid function declaration found.$RS";
-            echo;
-            mobash_cleanup;
-        else
-            echo -e "$RS${GRN}Complete$RS";
-        fi
-    };
-    function mobash_resolve_imports () 
-    { 
-        echo -e "${YEL}Building dependency list...$RS";
-        dict_init MOBASH_IMPORTS;
-        local include;
-        unset IFS;
-        for include in $(dict_get_keys INCLUDE_FILES);
-        do
-            local absolute="$(dict_get INCLUDE_FILES $include)";
-            print_ln "%-${FORMAT_WIDTH}s" "  $include: " $CYN;
-            echo -e "${LGRN}$absolute$RS";
-            local import;
-            unset IFS;
-            for import in $(grep "^#@import" "$absolute" | awk '{ print $2 }' | sort | uniq);
-            do
-                mobash_insert_import "$import" "$absolute";
-            done;
-        done;
-        local imports_searched imports_searched_i;
-        dict_init imports_searched;
-        dict_init IMPORT_FILES;
-        local imports_needed="true";
-        while [[ -n $imports_needed ]]; do
-            imports_needed="";
-            local import;
-            unset IFS;
-            for import in $(dict_get_keys MOBASH_IMPORTS);
-            do
-                if ! arrays_contains imports_searched $import; then
-                    dict_set imports_searched $import "true";
-                    print_ln "%-${FORMAT_WIDTH}s" "  $import: " $CYN;
-                    local module=${import%%\.*};
-                    local module_file;
-                    if [[ ! -n $(dict_contains_key IMPORT_FILES $module) ]]; then
-                        module_file="$(resolve_file_in_path "$module.shm" "$IMPORT_PATH" ":")";
-                        if [[ ! -n $module_file ]]; then
-                            echo -e "${RED}No file found in path for: $module$RS";
-                            mobash_cleanup;
-                        fi;
-                        dict_set IMPORT_FILES "$module" "$module_file";
-                    else
-                        module_file="$(dict_get IMPORT_FILES "$module")";
-                    fi;
-                    echo -e "${LGRN}$module_file$RS";
-                    local function_imports=$(grep "^#@function $import:" "$module_file" | cut -d':' -f 2 | sed 's/^ *//');
-                    if [[ -n $function_imports ]]; then
-                        local function_import;
-                        unset IFS;
-                        for function_import in $function_imports;
-                        do
-                            if mobash_insert_import "$function_import" "$(basename "$(dict_get MOBASH_IMPORTS $import)")->$module"; then
-                                imports_needed="true";
-                            fi;
-                        done;
-                    fi;
-                fi;
-            done;
-        done
-    };
-    function mobash_insert_import () 
-    { 
-        if [[ -n "$1" ]]; then
-            print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT;
-            local current="$(dict_get MOBASH_IMPORTS "$1")";
-            if [[ -n $current ]]; then
-                echo -e "${LYEL}$current$RS";
-                return 1;
-            else
-                echo -e "${GRN}New dependency$RS";
-                dict_set MOBASH_IMPORTS "$1" "$2";
-                return 0;
-            fi;
-        fi
-    };
-    function mobash_transfer_import_contents () 
-    { 
-        echo -e "\n${YEL}Writing imports...$RS";
-        mobash_transfer_current="";
-        BIFS="$IFS";
-        IFS='
-';
-        for mobash_import_s in `sort <<< "${MOBASH_IMPORTS_I[*]}"`;
-        do
-            IFS="$BIFS";
-            declare -a mobash_transfer_parts=(${mobash_import_s/./ });
-            if [[ ${mobash_transfer_parts[0]} != $mobash_transfer_current ]]; then
-                if ! mobash_transfer_queued_contents; then
-                    mobash_cleanup;
-                fi;
-                mobash_transfer_current="${mobash_transfer_parts[0]}";
-                unset mobash_transfer_names;
-                declare -a mobash_transfer_names;
-            fi;
-            mobash_transfer_names[${#mobash_transfer_names[@]}]="${mobash_transfer_parts[1]}";
-            IFS='
-';
-        done;
-        IFS="$BIFS";
-        if ! mobash_transfer_queued_contents; then
-            mobash_cleanup;
-        fi
-    };
-    function mobash_transfer_queued_contents () 
-    { 
-        if [[ -n $mobash_transfer_current ]]; then
-            print_ln "%-${FORMAT_WIDTH}s" "  $mobash_transfer_current: " $CYN;
-            echo -n -e "$RED";
-            ( if source ${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}; then
-                echo -e "$LGRN${MOBASH_IMPORT_FILES[`mobash_get_file_map_index $mobash_transfer_current`]}";
-                for mobash_transfer_name in ${mobash_transfer_names[@]};
-                do
-                    print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $mobash_transfer_name: " $MGT;
-                    declare -f "${mobash_transfer_current}_$mobash_transfer_name" >> $BIN_NEW;
-                    echo -e "${GRN}Complete$RS";
-                done;
-            else
-                return 1;
-            fi );
-        fi
-    };
-    function mobash_get_filenames () 
-    { 
-        print_ln "%-${FORMAT_WIDTH}s" "Resolving source " $YEL;
-        SOURCE_FILE=$(resolve_file_in_path "$1.shs" "$SOURCE_PATH" ":");
-        if [[ ! -n $SOURCE_FILE ]]; then
-            echo -e "${RED}No source found in path for: $1.shs$RS";
-            exit 1;
-        fi;
-        SOURCE_FILE_CUSTOM="$SOURCE_FILE.custom";
-        echo -e "${LGRN}$SOURCE_FILE$RS";
-        echo -e "${YEL}Finding includes...$RS";
-        dict_init INCLUDE_FILES;
-        dict_set INCLUDE_FILES "$1.shs" "$SOURCE_FILE";
-        local include_file include_absolute_file;
-        unset IFS;
-        for include_file in $(grep "^#@include" "$SOURCE_FILE" | awk '{ print $2 }');
-        do
-            print_ln "%-${FORMAT_WIDTH}s" "  $include_file: " $CYN;
-            include_absolute_file=$(resolve_file_in_path "$include_file" "$INCLUDE_PATH" ":");
-            if [[ -n $include_absolute_file ]]; then
-                dict_set INCLUDE_FILES "$include_file" "$include_absolute_file";
-                echo -e "${LGRN}$include_absolute_file$RS";
-            else
-                echo;
-                dict_dump INCLUDE_FILES;
-                echo -e "\n${RED}No source file in path for: $include_file$RS";
-                mobash_cleanup;
-            fi;
-        done;
-        CONFIG_FILE=$(cat $SOURCE_FILE | grep "^#@config" | head -1 | awk '{ print $2 }');
-        if [[ -n $CONFIG_FILE ]]; then
-            echo;
-            print_ln "%-${FORMAT_WIDTH}s" "Resolving config " $YEL;
-            local temp_config_file=$(resolve_file_in_path "$CONFIG_FILE" "$CONFIG_PATH" ":");
-            if [[ -n $temp_config_file ]]; then
-                CONFIG_FILE="$temp_config_file";
-                echo -e "${LGRN}$temp_config_file$RS";
-            else
-                echo -e "${RED}No config found in path for: $temp_config_file$RS";
-                exit 1;
-            fi;
-        fi;
-        print_ln "%-${FORMAT_WIDTH}s" "Resolving output " $YEL;
-        BIN="$(resolve_dir $BIN_DIR)/$1$BIN_EXTENSION";
-        BIN_NEW="$BIN.new";
-        echo -e "${LGRN}$BIN$RS"
-    };
-    function mobash_get_custom_contents () 
-    { 
-        echo -e "\n${YEL}Collecting custom...$RS";
-        echo "mo_main() {" > $SOURCE_FILE_CUSTOM;
-        local i f;
-        for ((i=${#INCLUDE_ABSOLUTE_FILES[@]}-1 ; i>=0 ; i-- ))
-        do
-            f=${INCLUDE_ABSOLUTE_FILES[$i]};
-            print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN;
-            cat "$f" >> $SOURCE_FILE_CUSTOM;
-            echo >> $SOURCE_FILE_CUSTOM;
-            echo -e "${GRN}Complete$RS";
-        done;
-        echo "}" >> $SOURCE_FILE_CUSTOM;
-        print_ln "%-${FORMAT_WIDTH}s" "Writing custom " $YEL;
-        echo -n -e "$RED";
-        if mobash_apply_custom_contents; then
-            echo -e "$RS${GRN}Complete$RS";
-        else
-            echo -e -n "$RS";
-            echo;
-            mobash_cleanup;
-        fi
-    };
-    function mobash_apply_custom_contents () 
-    { 
-        ( if source $SOURCE_FILE_CUSTOM; then
-            declare -f mo_main >> $BIN_NEW;
-        else
-            return 1;
-        fi )
-    };
-    function mobash_init_bin () 
-    { 
-        echo "#!/bin/bash" > $BIN_NEW;
-        echo -e "# Compiled with MoBash v$MOBASH_VERSION\n" >> $BIN_NEW;
-        if [[ -n $CONFIG_FILE ]]; then
-            cat "$CONFIG_FILE" >> $BIN_NEW;
-        fi;
-        echo -e "\n################################################################################" >> $BIN_NEW;
-        echo "# GENERATED CODE" >> $BIN_NEW;
-        echo "################################################################################" >> $BIN_NEW
-    };
-    function mobash_usage () 
-    { 
-        cat  <<EOT
-
-usage: mobash [options] <binary>                    Compile <binary> from sources.
-   or: mobash [options] <binary> -r [args ..]       Compile <binary> and run it with [args ..]
-
-Arguments:
-   -sh                       Append .sh to the compiled binary
-   -p, --preserve            Leave .custom and .new files in place after exit
-
-EOT
-
-    }
     local RS='\033[0;0m';
     local RED='\033[1;31m';
     local GRN='\033[1;32m';
@@ -412,77 +409,17 @@ EOT
     mobash_transfer_import_contents;
     mobash_finalize
 }
-arrays_contains () 
-{ 
-    local arrays_i;
-    for arrays_i in $(arrays_get $1 @);
-    do
-        if [[ $arrays_i == $2 ]]; then
-            return 0;
-        fi;
-    done;
-    return 1
-}
-arrays_dump () 
-{ 
-    echo "Dump of array '$1':";
-    local i;
-    unset IFS;
-    for i in $(arrays_get_indicies $1);
-    do
-        echo -e "Key: '$i'\t\tValue: '$(arrays_get $1 $i)'";
-    done
-}
-arrays_get () 
-{ 
-    local array="$1[${2:?$(error_do 'Array index required.')}]";
-    echo "${!array}"
-}
-arrays_get_indicies () 
-{ 
-    unset IFS;
-    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
-}
-arrays_index_of () 
-{ 
-    local i;
-    unset IFS;
-    for i in $(arrays_get_indicies $1);
-    do
-        local elem="$(arrays_get $1 $i)";
-        if [[ $elem == $2 ]]; then
-            echo "$i";
-            return 0;
-        fi;
-    done
-}
 arrays_init () 
 { 
     read -a "${1:?$(error 'Array name is required.')}" <<< ''
 }
-arrays_len () 
+arrays_push () 
 { 
-    eval 'echo ${#'"$1"'[@]}'
-}
-arrays_set () 
-{ 
-    read -r "$1[$2]" <<< "$3"
+    arrays_set $1 $(arrays_len $1) "$2"
 }
 dict_contains_key () 
 { 
     arrays_contains $(dict_get_index_array $1) "$2"
-}
-dict_dump () 
-{ 
-    local dict_di="$(dict_get_index_array $1)";
-    local dict_i;
-    unset IFS;
-    echo "Dump of dict '$1':";
-    for dict_i in $(arrays_get_indicies $1);
-    do
-        print_ln "%-50s" "Key: '$(arrays_get $dict_di $dict_i)'";
-        echo -e "Value: '$(arrays_get $1 $dict_i)'";
-    done
 }
 dict_get () 
 { 
@@ -491,15 +428,13 @@ dict_get ()
         echo "$(arrays_get $1 $dict_i)";
     fi
 }
-dict_get_index_array () 
-{ 
-    local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
-    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
-    echo $dict_i
-}
 dict_get_keys () 
 { 
     arrays_get $(dict_get_index_array $1) @
+}
+dict_get_values () 
+{ 
+    arrays_get $1 @
 }
 dict_init () 
 { 
@@ -519,6 +454,97 @@ error_do ()
     local depth=${2:-0};
     echo "($(error_file)) $(error_format $depth "${1:-error}")";
     error_exit
+}
+print_ln () 
+{ 
+    [[ -n $3 ]] && echo -n -e "$3";
+    printf "$1" "$(echo -n -e "$2")";
+    [[ -n $3 ]] && echo -n -e '\033[0;0m'
+}
+resolve_dir () 
+{ 
+    local p="${1/#~/$HOME}";
+    if [[ -f $p ]]; then
+        resolve_dir $(dirname "$p");
+    else
+        if [[ -d $p ]]; then
+            ( builtin cd "$p" >&/dev/null && pwd "$2" );
+        fi;
+    fi
+}
+resolve_file_in_path () 
+{ 
+    local d;
+    local f;
+    IFS="$3";
+    for d in $2;
+    do
+        if [[ -n $d ]]; then
+            d=$(resolve_dir $d);
+            f=$(find $d -type f -name "$1" 2>/dev/null | head -1);
+            if [[ -n $f ]]; then
+                break;
+            fi;
+        fi;
+    done;
+    echo -n "$f"
+}
+resolve_expanded_path () 
+{ 
+    local current_dir="$(resolve_dir ${1:-.})";
+    local expanded_dirs=("$current_dir");
+    local d;
+    while [[ $current_dir != '/' ]]; do
+        current_dir="$(dirname $current_dir)";
+        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
+    done;
+    for d in "${expanded_dirs[@]}";
+    do
+        echo "$d";
+    done
+}
+arrays_len () 
+{ 
+    eval 'echo ${#'"$1"'[@]}'
+}
+arrays_set () 
+{ 
+    read -r "$1[$2]" <<< "$3"
+}
+arrays_contains () 
+{ 
+    local arrays_i;
+    for arrays_i in $(arrays_get $1 @);
+    do
+        if [[ $arrays_i == $2 ]]; then
+            return 0;
+        fi;
+    done;
+    return 1
+}
+dict_get_index_array () 
+{ 
+    local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
+    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
+    echo $dict_i
+}
+arrays_get () 
+{ 
+    local array="$1[${2:?$(error_do 'Array index required.')}]";
+    echo "${!array}"
+}
+arrays_index_of () 
+{ 
+    local i;
+    unset IFS;
+    for i in $(arrays_get_indicies $1);
+    do
+        local elem="$(arrays_get $1 $i)";
+        if [[ $elem == $2 ]]; then
+            echo "$i";
+            return 0;
+        fi;
+    done
 }
 error_exit () 
 { 
@@ -546,52 +572,9 @@ error_format ()
         echo "$prefix";
     fi
 }
-print_ln () 
+arrays_get_indicies () 
 { 
-    [[ -n $3 ]] && echo -n -e "$3";
-    printf "$1" "$(echo -n -e "$2")";
-    [[ -n $3 ]] && echo -n -e '\033[0;0m'
-}
-resolve_dir () 
-{ 
-    local p="${1/#~/$HOME}";
-    if [[ -f $p ]]; then
-        resolve_dir $(dirname "$p");
-    else
-        if [[ -d $p ]]; then
-            ( builtin cd "$p" >&/dev/null && pwd "$2" );
-        fi;
-    fi
-}
-resolve_expanded_path () 
-{ 
-    local current_dir="$(resolve_dir ${1:-.})";
-    local expanded_dirs=("$current_dir");
-    local d;
-    while [[ $current_dir != '/' ]]; do
-        current_dir="$(dirname $current_dir)";
-        expanded_dirs=("$current_dir" "${expanded_dirs[@]}");
-    done;
-    for d in "${expanded_dirs[@]}";
-    do
-        echo "$d";
-    done
-}
-resolve_file_in_path () 
-{ 
-    local d;
-    local f;
-    IFS="$3";
-    for d in $2;
-    do
-        if [[ -n $d ]]; then
-            d=$(resolve_dir $d);
-            f=$(find $d -type f -name "$1" 2>/dev/null | head -1);
-            if [[ -n $f ]]; then
-                break;
-            fi;
-        fi;
-    done;
-    echo -n "$f"
+    unset IFS;
+    eval 'echo ${!'"${1:?$(error 'Array name is required.')}"'[@]}'
 }
 mo_main "$@"
