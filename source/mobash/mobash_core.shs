@@ -162,9 +162,7 @@ mobash_transfer_import_contents() {
 
 		# Add items to the array until module name changes, then transfer functions.
 		if [[ $module != $current_module ]]; then
-			if ! mobash_transfer_queued_contents; then
-				mobash_cleanup
-			fi
+			mobash_transfer_queued_contents
 
 			# Reset array and current module.
 			current_module="$module"
@@ -174,9 +172,7 @@ mobash_transfer_import_contents() {
 		arrays_push function_names "$(mobash_get_import_function $import)"
 	done
 
-	if ! mobash_transfer_queued_contents; then
-		mobash_cleanup
-	fi
+	mobash_transfer_queued_contents
 }
 
 mobash_transfer_queued_contents() {
@@ -185,6 +181,15 @@ mobash_transfer_queued_contents() {
 		echo -n -e "$RED"
 		(
 		local file="$(dict_get IMPORT_FILES $current_module)"
+
+		for function_name in "${function_names[@]}";
+		do 
+			local real_name="$(mobash_get_function_name "$current_module" "$function_name")"
+			if [[ $(declare -f "$real_name") ]]; then
+				unset -f "$real_name"
+			fi
+		done
+
 		if source "$file";
 		then
 			echo -e "$LGRN$file"
@@ -206,6 +211,9 @@ mobash_transfer_queued_contents() {
 			return 1
 		fi
 		)
+		if [[ $? -ne 0 ]]; then
+			mobash_cleanup
+		fi
 	fi
 }
 

@@ -156,17 +156,13 @@ mo_main ()
         do
             local module=$(mobash_get_import_module $import);
             if [[ $module != $current_module ]]; then
-                if ! mobash_transfer_queued_contents; then
-                    mobash_cleanup;
-                fi;
+                mobash_transfer_queued_contents;
                 current_module="$module";
                 arrays_init function_names;
             fi;
             arrays_push function_names "$(mobash_get_import_function $import)";
         done;
-        if ! mobash_transfer_queued_contents; then
-            mobash_cleanup;
-        fi
+        mobash_transfer_queued_contents
     };
     function mobash_transfer_queued_contents () 
     { 
@@ -174,6 +170,13 @@ mo_main ()
             print_ln "%-${FORMAT_WIDTH}s" "  $current_module: " $CYN;
             echo -n -e "$RED";
             ( local file="$(dict_get IMPORT_FILES $current_module)";
+            for function_name in "${function_names[@]}";
+            do
+                local real_name="$(mobash_get_function_name "$current_module" "$function_name")";
+                if [[ -n $(declare -f "$real_name") ]]; then
+                    unset -f "$real_name";
+                fi;
+            done;
             if source "$file"; then
                 echo -e "$LGRN$file";
                 local function_name;
@@ -193,6 +196,9 @@ mo_main ()
             else
                 return 1;
             fi );
+            if [[ $? -ne 0 ]]; then
+                mobash_cleanup;
+            fi;
         fi
     };
     function mobash_get_import_module () 
@@ -450,7 +456,7 @@ arrays_contains ()
 }
 arrays_get () 
 { 
-    local array="$1[${2:?$(error_do 'Array index required.')}]";
+    local array="$1[${2:?$(error 'Array index required.')}]";
     echo "${!array}"
 }
 arrays_get_indicies () 
@@ -501,7 +507,7 @@ dict_get ()
 dict_get_index_array () 
 { 
     local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
-    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
+    : ${dict_i:?$(error "Dictionary index array $i does not exist.")};
     echo $dict_i
 }
 dict_get_keys () 
@@ -514,7 +520,7 @@ dict_get_values ()
 }
 dict_init () 
 { 
-    arrays_init ${1:?$(error_do 'Dictionary name is required.')};
+    arrays_init ${1:?$(error 'Dictionary name is required.')};
     arrays_init $(dict_get_index_array $1)
 }
 dict_set () 
@@ -526,12 +532,6 @@ dict_set ()
     arrays_set $1 $dict_i "$3"
 }
 error () 
-{ 
-    local depth=${2:-0};
-    echo "($(error_file)) $(error_format $depth "${1:-error}")";
-    error_exit
-}
-error_do () 
 { 
     local depth=${2:-0};
     echo "($(error_file)) $(error_format $depth "${1:-error}")";
