@@ -19,6 +19,7 @@ mobash_finalize() {
 
 	echo
 	print_ln "%-${FORMAT_WIDTH}s" "Finalizing script " $YEL
+
 	echo 'mo_main "$@"' >> $BIN_NEW
 	if [[ $PRESERVE_TEMP_FILES ]]; then
 		cp $BIN_NEW $BIN
@@ -43,7 +44,7 @@ mobash_cleanup() {
 mobash_resolve_function_for_file() {
 	local file="$1"
 	local func="$2"
-	print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT; echo -n -e "$RED"
+	print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $LMGT; echo -n -e "$RED"
 	bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi'
 
 	if [[ $? == 1 ]]; then
@@ -136,7 +137,7 @@ mobash_resolve_imports() {
 
 mobash_insert_import() {
 	if [[ "$1" ]]; then
-		print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT
+		print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $LMGT
 
 		local current="$(dict_get MOBASH_IMPORTS "$1")"
 		if [[ $current ]]; then
@@ -196,7 +197,7 @@ mobash_transfer_queued_contents() {
 			local function_name; unset IFS
 			for function_name in "${function_names[@]}";
 			do 
-				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT
+				print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $LMGT
 
 				local function_def="$(declare -f "$(mobash_get_function_name "$current_module" "$function_name")")"
 				if [[ $function_def ]]; then
@@ -309,11 +310,13 @@ mobash_get_filenames() {
 
 mobash_get_custom_contents() {
 
-	echo -e "\n${YEL}Collecting custom...$RS"
-
 	echo "mo_main() {" > $SOURCE_FILE_CUSTOM
 
-	local f
+	mobash_color_write "$SOURCE_FILE_CUSTOM"
+
+	echo -e "\n${YEL}Collecting custom...$RS"
+
+	local f; unset IFS
 	for f in $(dict_get_values INCLUDE_FILES); do
 
 		print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN

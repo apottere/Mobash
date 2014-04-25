@@ -32,6 +32,17 @@ MOBASH_BIN_DIR=""       # bin_dir
 ################################################################################
 mo_main () 
 { 
+    local RS='\033[0;0m';
+    local LGRN='\033[0;32m';
+    local LYEL='\033[0;33m';
+    local LCYN='\033[0;36m';
+    local LBLU='\033[0;34m';
+    local LMGT='\033[0;35m';
+    local RED='\033[1;31m';
+    local GRN='\033[1;32m';
+    local YEL='\033[1;33m';
+    local CYN='\033[1;36m';
+    local BLU='\033[1;34m';
     function mobash_finalize () 
     { 
         echo;
@@ -60,7 +71,7 @@ mo_main ()
     { 
         local file="$1";
         local func="$2";
-        print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $MGT;
+        print_ln "%-${FORMAT_WIDTH}s" "    $func(): " $LMGT;
         echo -n -e "$RED";
         bash -c 'source '$file'; if [[ $(declare -f '$func') == "" ]]; then exit 1; else declare -f '$func' | grep -v \"^$\" >> '$BIN_NEW'; fi';
         if [[ $? == 1 ]]; then
@@ -134,7 +145,7 @@ mo_main ()
     function mobash_insert_import () 
     { 
         if [[ -n "$1" ]]; then
-            print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $MGT;
+            print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $1: " $LMGT;
             local current="$(dict_get MOBASH_IMPORTS "$1")";
             if [[ -n $current ]]; then
                 echo -e "${LYEL}$current$RS";
@@ -156,17 +167,13 @@ mo_main ()
         do
             local module=$(mobash_get_import_module $import);
             if [[ $module != $current_module ]]; then
-                if ! mobash_transfer_queued_contents; then
-                    mobash_cleanup;
-                fi;
+                mobash_transfer_queued_contents;
                 current_module="$module";
                 arrays_init function_names;
             fi;
             arrays_push function_names "$(mobash_get_import_function $import)";
         done;
-        if ! mobash_transfer_queued_contents; then
-            mobash_cleanup;
-        fi
+        mobash_transfer_queued_contents
     };
     function mobash_transfer_queued_contents () 
     { 
@@ -174,13 +181,20 @@ mo_main ()
             print_ln "%-${FORMAT_WIDTH}s" "  $current_module: " $CYN;
             echo -n -e "$RED";
             ( local file="$(dict_get IMPORT_FILES $current_module)";
+            for function_name in "${function_names[@]}";
+            do
+                local real_name="$(mobash_get_function_name "$current_module" "$function_name")";
+                if [[ -n $(declare -f "$real_name") ]]; then
+                    unset -f "$real_name";
+                fi;
+            done;
             if source "$file"; then
                 echo -e "$LGRN$file";
                 local function_name;
                 unset IFS;
                 for function_name in "${function_names[@]}";
                 do
-                    print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $MGT;
+                    print_ln "%-$(( $FORMAT_WIDTH + 2 ))s" "    $function_name: " $LMGT;
                     local function_def="$(declare -f "$(mobash_get_function_name "$current_module" "$function_name")")";
                     if [[ -n $function_def ]]; then
                         echo "$function_def" >> $BIN_NEW;
@@ -193,6 +207,9 @@ mo_main ()
             else
                 return 1;
             fi );
+            if [[ $? -ne 0 ]]; then
+                mobash_cleanup;
+            fi;
         fi
     };
     function mobash_get_import_module () 
@@ -266,9 +283,11 @@ mo_main ()
     };
     function mobash_get_custom_contents () 
     { 
-        echo -e "\n${YEL}Collecting custom...$RS";
         echo "mo_main() {" > $SOURCE_FILE_CUSTOM;
+        mobash_color_write "$SOURCE_FILE_CUSTOM";
+        echo -e "\n${YEL}Collecting custom...$RS";
         local f;
+        unset IFS;
         for f in $(dict_get_values INCLUDE_FILES);
         do
             print_ln "%-${FORMAT_WIDTH}s" "  $f: " $CYN;
@@ -375,17 +394,26 @@ EOT
         echo -e "${GRN}$BIN_DIR";
         echo
     };
-    local RS='\033[0;0m';
-    local RED='\033[1;31m';
-    local GRN='\033[1;32m';
-    local LGRN='\033[0;32m';
-    local YEL='\033[1;33m';
-    local LYEL='\033[0;33m';
-    local CYN='\033[0;36m';
-    local LCYN='\033[0;36m';
-    local BLU='\033[1;34m';
-    local LBLU='\033[0;34m';
-    local MGT='\033[0;35m';
+    function mobash_color_write () 
+    { 
+        echo -e "\n${YEL}Parsing colors:$RS";
+        local color;
+        IFS='
+';
+        for color in $(dict_get_values INCLUDE_FILES | xargs grep -h '^#@color');
+        do
+            unset IFS;
+            color="${color#\#@color }";
+            local variable="$(cut -f1 -d' ' <<< "$color")";
+            local args="$(cut -f2- -d' ' <<< "$color")";
+            local code="$(bbc_build $args)";
+            print_ln "%-${FORMAT_WIDTH}s" "  $variable" $CYN;
+            echo -n -e "${LGRN}";
+            echo -n "$code";
+            echo -e "${LGRN}";
+            echo "local $variable='$code'" >> "$1";
+        done
+    };
     echo -e "\n${LBLU}Initializing Mobash v$MOBASH_VERSION$RS";
     local BIN_EXTENSION;
     local PRESERVE_TEMP_FILES;
@@ -450,7 +478,7 @@ arrays_contains ()
 }
 arrays_get () 
 { 
-    local array="$1[${2:?$(error_do 'Array index required.')}]";
+    local array="$1[${2:?$(error 'Array index required.')}]";
     echo "${!array}"
 }
 arrays_get_indicies () 
@@ -487,6 +515,122 @@ arrays_set ()
 { 
     read -r "$1[$2]" <<< "$3"
 }
+bbc_build () 
+{ 
+    local code="\033[";
+    local colon="";
+    local helper;
+    if [[ "$1" =~ reset|RESET|Reset ]]; then
+        echo "${code}0;0m";
+        return;
+    fi;
+    while [[ $1 != "" ]]; do
+        code="${code}$colon";
+        colon=";";
+        case "$1" in 
+            "fg")
+                helper="bbc_helper_foreground";
+                shift 1;
+                code="${code}$( $helper $1 )"
+            ;;
+            "bg")
+                helper="bbc_helper_background";
+                shift 1;
+                code="${code}$( $helper $1 )"
+            ;;
+            "reg")
+                code="${code}0"
+            ;;
+            "bold")
+                code="${code}1"
+            ;;
+            "dim")
+                code="${code}2"
+            ;;
+            "underline")
+                code="${code}4"
+            ;;
+            "blink")
+                code="${code}5"
+            ;;
+            *)
+                echo -n " NO_CODE:\"$1\" "
+            ;;
+        esac;
+        shift 1;
+    done;
+    echo -n "${code}m"
+}
+bbc_helper_background () 
+{ 
+    case "$1" in 
+        "black")
+            echo "40"
+        ;;
+        "red")
+            echo "41"
+        ;;
+        "green")
+            echo "42"
+        ;;
+        "yellow")
+            echo "43"
+        ;;
+        "blue")
+            echo "44"
+        ;;
+        "magenta")
+            echo "45"
+        ;;
+        "cyan")
+            echo "46"
+        ;;
+        "white")
+            echo "47"
+        ;;
+        "gray")
+            echo "100"
+        ;;
+        *)
+            echo -n " NO_COLOR:\"$1\" "
+        ;;
+    esac
+}
+bbc_helper_foreground () 
+{ 
+    case "$1" in 
+        "black")
+            echo "30"
+        ;;
+        "red")
+            echo "31"
+        ;;
+        "green")
+            echo "32"
+        ;;
+        "yellow")
+            echo "33"
+        ;;
+        "blue")
+            echo "34"
+        ;;
+        "magenta")
+            echo "35"
+        ;;
+        "cyan")
+            echo "36"
+        ;;
+        "white")
+            echo "37"
+        ;;
+        "gray")
+            echo "90"
+        ;;
+        *)
+            echo -n " NO_COLOR:\"$1\" "
+        ;;
+    esac
+}
 dict_contains_key () 
 { 
     arrays_contains $(dict_get_index_array $1) "$2"
@@ -501,7 +645,7 @@ dict_get ()
 dict_get_index_array () 
 { 
     local dict_i="${1:?$(error 'Dictionary name is required.')}_i";
-    : ${dict_i:?$(error_do "Dictionary index array $i does not exist.")};
+    : ${dict_i:?$(error "Dictionary index array $i does not exist.")};
     echo $dict_i
 }
 dict_get_keys () 
@@ -514,7 +658,7 @@ dict_get_values ()
 }
 dict_init () 
 { 
-    arrays_init ${1:?$(error_do 'Dictionary name is required.')};
+    arrays_init ${1:?$(error 'Dictionary name is required.')};
     arrays_init $(dict_get_index_array $1)
 }
 dict_set () 
@@ -526,12 +670,6 @@ dict_set ()
     arrays_set $1 $dict_i "$3"
 }
 error () 
-{ 
-    local depth=${2:-0};
-    echo "($(error_file)) $(error_format $depth "${1:-error}")";
-    error_exit
-}
-error_do () 
 { 
     local depth=${2:-0};
     echo "($(error_file)) $(error_format $depth "${1:-error}")";

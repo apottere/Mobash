@@ -1,0 +1,24 @@
+#!/bin/bash
+
+#@import bbc.build
+#@import print.ln
+
+mobash_color_write() {
+
+	echo -e "\n${YEL}Parsing colors:$RS"
+	local color; IFS=$'\n'
+	for color in $(dict_get_values INCLUDE_FILES | xargs grep -h '^#@color'); do
+		unset IFS
+		color="${color#\#@color }"
+		local variable="$(cut -f1 -d' ' <<< "$color")"
+		local args="$(cut -f2- -d' ' <<< "$color")"
+		local code="$(bbc_build $args)"
+
+		print_ln "%-${FORMAT_WIDTH}s" "  $variable" $CYN
+		echo -n -e "${LGRN}"
+		echo -n "$code"
+		echo -e "${LGRN}"
+
+		echo "local $variable='$code'" >> "$1"
+	done
+}
