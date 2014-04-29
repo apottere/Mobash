@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#@config example_conf.shs
+
+#@include example_funcs.shs
+
+#@import resolve.dir
+
+#@color RS reset
+#@color RED reg fg red
+#@color GREEN bold fg green bg black
+
+echo -e "${RED}This is an example of a compiled project.$RS"
+echo -e "${GREEN}It can call it's $(example_helper), too!$RS"
+echo -e "P.S., I'm in $(resolve_dir "$0")."
+echo -e "What about config values?  Here we go: $EXAMPLE_CONF"

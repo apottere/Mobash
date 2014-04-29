@@ -1,0 +1,39 @@
+#!/bin/bash
+# Compiled with MoBash v2.0
+
+#!/bin/bash
+
+##############################################
+# example config
+##############################################
+
+EXAMPLE_CONF='hi'
+################################################################################
+# GENERATED CODE
+################################################################################
+mo_main () 
+{ 
+    local RS='\033[0;0m';
+    local RED='\033[0;31m';
+    local GREEN='\033[1;32;40m';
+    function example_helper () 
+    { 
+        echo "helper function"
+    };
+    echo -e "${RED}This is an example of a compiled project.$RS";
+    echo -e "${GREEN}It can call it's $(example_helper), too!$RS";
+    echo -e "P.S., I'm in $(resolve_dir "$0").";
+    echo -e "What about config values?  Here we go: $EXAMPLE_CONF"
+}
+resolve_dir () 
+{ 
+    local p="${1/#~/$HOME}";
+    if [[ -f $p ]]; then
+        resolve_dir $(dirname "$p");
+    else
+        if [[ -d $p ]]; then
+            ( builtin cd "$p" >&/dev/null && pwd "$2" );
+        fi;
+    fi
+}
+mo_main "$@"
