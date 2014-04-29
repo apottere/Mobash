@@ -1,6 +1,8 @@
 Mobash.sh
 =========
 
+A simplistic modular bash "compiler"
+
 Cloning
 -------
 
@@ -8,8 +10,6 @@ After cloning, make sure you run `git submodule update --init --recursive` in th
 
 Usage
 -----
-
-A simplistic modular bash "compiler"
 
 Mobash allows you to modularize and simplify your bash code, in order to make it more reusable and understandable.  Mobash provides multiple constructs that you can take advantage of to break out your code:
 
