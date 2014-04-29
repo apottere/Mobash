@@ -1,6 +1,14 @@
 Mobash.sh
 =========
 
+Cloning
+-------
+
+After cloning, make sure you run `git submodule update --init --recursive` in the root diretory to pull bashlib to the import directory.
+
+Usage
+-----
+
 A simplistic modular bash "compiler"
 
 Mobash allows you to modularize and simplify your bash code, in order to make it more reusable and understandable.  Mobash provides multiple constructs that you can take advantage of to break out your code:
