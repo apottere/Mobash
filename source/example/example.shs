@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#@config example_conf.shs
+#@config example.conf
 
 #@include example_funcs.shs
 
