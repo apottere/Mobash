@@ -1,0 +1,13 @@
+#!/bin/bash
+
+test_doing_things() {
+	setup() {
+		echo hi;
+	}
+	setup
+	return 1
+}
+
+test_things_that_work() {
+	echo "WOOP"
+}

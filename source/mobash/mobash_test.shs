@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# $1: test file
+# $2: test to run
+mobash_run_test() {
+	local file="$1"
+	local test_func="$2"
+	echo ">>>>> output from $test_func >>>>>"
+
+	(
+		source "$file"
+		( $test_func )
+	)
+	local ret=$?
+	echo "<<<<< output from $test_func <<<<<"
+	return $ret
+}
+
+# $1: test file
+mobash_get_all_tests() {
+
+	local file="$1"
+
+	(
+		source "$file"
+		echo "$(intro_list_functions | command grep "$file" | command grep '^test' | command cut -f1 -d' ')"
+	)
+}
+
+# $1 test file
+mobash_run_all_tests() {
+
+	local failed
+	local file="$1"
+
+	arrays_init failed
+
+	local tst; unset IFS
+	for tst in $(mobash_get_all_tests "$file"); do
+		local output
+		output=$(mobash_run_test "$file" "$tst")
+
+		if [[ $? -ne 0 ]]; then
+			echo -n -e "\033[0;31m"
+			echo -n "$output"
+			echo -e "\033[0;0m"
+
+			arrays_push failed "$tst"
+		else
+			echo -n -e "\033[0;32m"
+			echo -n "$output"
+			echo -e "\033[0;0m"
+		fi
+	done
+
+	if [[ $(arrays_len failed) -gt 0 ]]; then
+		echo
+		echo "The following tests failed:"
+
+		local failure; unset IFS
+		for failure in $(arrays_get failed @); do
+			echo -e "\t$failure"
+		done
+		return 1
+	fi
+}
